@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#05060f" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Open Questions" />
+    <meta name="description" content="The Library of Open Questions — an interactive, procedural 3D vision of a public library after AI." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>The Library of Open Questions</title>
+  </head>
+  <body>
+    <canvas id="scene" aria-label="Interactive 3D library scene"></canvas>
+
+    <div class="hud" id="hud">
+      <header class="title">
+        <p class="eyebrow">A public library, after AI</p>
+        <h1>The Library of <em>Open Questions</em></h1>
+        <p class="hint">
+          <span class="hint-touch">Drag to orbit · pinch to zoom · tap a glowing zone</span>
+          <span class="hint-mouse">Drag to orbit · scroll to zoom · click a glowing zone</span>
+        </p>
+      </header>
+
+      <div class="labels" id="labels" aria-hidden="true"></div>
+
+      <aside class="panel" id="panel" aria-live="polite" hidden>
+        <button class="panel-close" id="panel-close" aria-label="Close panel">×</button>
+        <p class="panel-kicker" id="panel-kicker"></p>
+        <h2 class="panel-title" id="panel-title"></h2>
+        <p class="panel-body" id="panel-body"></p>
+        <dl class="panel-compare">
+          <div><dt>Before AI</dt><dd id="panel-before"></dd></div>
+          <div><dt>Now</dt><dd id="panel-after"></dd></div>
+        </dl>
+        <div class="panel-actions">
+          <button class="btn btn-primary" id="panel-activate">Trigger again</button>
+          <button class="btn" id="panel-overview">Overview</button>
+        </div>
+      </aside>
+
+      <nav class="zonebar" id="zonebar" aria-label="Library zones"></nav>
+    </div>
+
+    <div class="loader" id="loader"><span>Lighting the stacks…</span></div>
+    <noscript>This experience needs JavaScript and WebGL.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

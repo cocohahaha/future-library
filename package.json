@@ -1,0 +1,18 @@
+{
+  "name": "future-space",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The Library of Open Questions — a post-AI library as an atmospheric, procedural Three.js scene.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}
