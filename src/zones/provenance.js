@@ -1,143 +1,171 @@
 import * as THREE from 'three';
-import { createZoneBase, viewFor } from './common.js';
+import { createZoneBase, viewFor, wood, stone, shadows, figure } from './common.js';
+import { rng } from '../scene/textures.js';
 import { PALETTE } from './data.js';
 
-const threadVert = /* glsl */ `
-  varying vec2 vUv;
-  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-`;
-const threadFrag = /* glsl */ `
-  uniform float uTime;
-  uniform float uSeed;
-  uniform float uIntensity;
-  uniform vec3 uColor;
-  varying vec2 vUv;
-  void main() {
-    float pulse = pow(fract(vUv.x * 1.5 - uTime * 0.35 + uSeed), 10.0);
-    float a = (0.18 + pulse * 1.4) * uIntensity;
-    gl_FragColor = vec4(uColor * (0.6 + pulse * 1.2), a);
-    #include <colorspace_fragment>
-  }
-`;
+// Cedar bookcases in a gentle arc. Books are bound in plant-dyed cloth, and
+// red silk threads (红线) drape from book to book: every text tied visibly to
+// its sources. Activation sends paper tags travelling along the threads.
+
+const CLOTH = [0x8c4a32, 0x5c6a58, 0xb08a52, 0x3f4a52, 0xcbb994, 0x7a5c48, 0x9b7b3e, 0x4d3b30];
 
 export function createProvenance(def, ctx) {
-  const zone = createZoneBase(def, { hitRadius: 6.5, hitHeight: 9, lightY: 5, lightIntensity: 34 });
+  const zone = createZoneBase(def, { hitRadius: 6.5, hitHeight: 8.5, lightY: 4.5, lightIntensity: 7 });
   const g = zone.group;
+  const rand = rng(12);
+  const low = ctx.quality === 'low';
 
   const towers = 5;
-  const shelves = 6;
-  const perShelf = ctx.quality === 'low' ? 7 : 10;
-  const towerW = 1.9;
-  const towerH = 7.2;
+  const shelves = 5;
+  const perShelf = low ? 9 : 13;
+  const towerW = 2.0;
+  const shelfGap = 1.12;
+  const towerH = 0.3 + shelves * shelfGap + 0.25;
 
-  const backMat = new THREE.MeshStandardMaterial({ color: 0x0b0e28, roughness: 0.7, metalness: 0.2 });
-  const shelfMat = new THREE.MeshBasicMaterial({ color: PALETTE.teal, transparent: true, opacity: 0.45 });
-  const bookMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  // low stone dais
+  const dais = new THREE.Mesh(new THREE.BoxGeometry(13.5, 0.22, 4.4), stone(0xcdbfa8));
+  dais.position.set(0, 0.11, -1.0);
+  shadows(dais);
+  g.add(dais);
 
-  const bookCount = towers * shelves * perShelf;
-  const books = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bookMat, bookCount);
-  const shelfLines = new THREE.InstancedMesh(new THREE.BoxGeometry(towerW, 0.04, 0.06), shelfMat, towers * (shelves + 1));
+  const cedar = wood(PALETTE.cedar);
+  const cedarDark = wood(0x5e3c28);
+  const bookMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+  const books = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bookMat, towers * shelves * perShelf);
+  books.castShadow = true;
+  books.receiveShadow = true;
   const bookPositions = [];
 
-  const palette = [new THREE.Color(PALETTE.teal), new THREE.Color(PALETTE.indigo), new THREE.Color(PALETTE.amber), new THREE.Color(PALETTE.violet)];
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const pos = new THREE.Vector3();
   const scl = new THREE.Vector3();
   const col = new THREE.Color();
+  const zAxis = new THREE.Vector3(0, 0, 1);
   let bi = 0;
-  let si = 0;
+
+  const postGeo = new THREE.BoxGeometry(0.14, towerH, 0.6);
+  const boardGeo = new THREE.BoxGeometry(towerW, 0.06, 0.6);
+  const backGeo = new THREE.BoxGeometry(towerW, towerH, 0.06);
+  const capGeo = new THREE.BoxGeometry(towerW + 0.5, 0.12, 0.85);
 
   for (let t = 0; t < towers; t++) {
-    const x = (t - (towers - 1) / 2) * 2.5;
-    const z = -(x * x) / 10; // gentle arc embracing the viewer
-    const yaw = Math.atan2(x, 10) * 0.8;
+    const x = (t - (towers - 1) / 2) * 2.55;
+    const z = -(x * x) / 12 - 1.2; // gentle arc embracing the viewer
     const tower = new THREE.Group();
-    tower.position.set(x, 0, z);
-    tower.rotation.y = -yaw;
+    tower.position.set(x, 0.22, z);
+    tower.rotation.y = -Math.atan2(x, 12) * 0.9;
     g.add(tower);
 
-    const back = new THREE.Mesh(new THREE.BoxGeometry(towerW + 0.2, towerH, 0.25), backMat);
-    back.position.set(0, towerH / 2, -0.4);
-    tower.add(back);
-    tower.updateMatrix();
-
+    const back = new THREE.Mesh(backGeo, cedarDark);
+    back.position.set(0, towerH / 2, -0.27);
+    const left = new THREE.Mesh(postGeo, cedar);
+    left.position.set(-towerW / 2 - 0.07, towerH / 2, 0);
+    const right = left.clone();
+    right.position.x = towerW / 2 + 0.07;
+    // a slightly flared cap, like a small eave
+    const cap = new THREE.Mesh(capGeo, cedarDark);
+    cap.position.y = towerH + 0.06;
+    tower.add(back, left, right, cap);
     for (let s = 0; s <= shelves; s++) {
-      const y = 0.35 + s * 1.1;
-      m.compose(pos.set(0, y - 0.05, 0.1), q.identity(), scl.set(1, 1, 1));
-      m.premultiply(tower.matrix);
-      shelfLines.setMatrixAt(si++, m);
-      if (s === shelves) break;
+      const b = new THREE.Mesh(boardGeo, cedar);
+      b.position.y = 0.25 + s * shelfGap;
+      tower.add(b);
+    }
+    shadows(tower);
+    tower.updateMatrix();
+    const towerMatrix = tower.matrix;
 
-      let cx = -towerW / 2 + 0.08;
+    for (let s = 0; s < shelves; s++) {
+      const y = 0.28 + s * shelfGap;
+      let cx = -towerW / 2 + 0.06;
       for (let b = 0; b < perShelf; b++) {
-        const w = 0.1 + Math.random() * 0.1;
-        const h = 0.55 + Math.random() * 0.35;
-        const lean = Math.random() < 0.12 ? (Math.random() - 0.5) * 0.4 : 0;
+        const w = 0.08 + rand() * 0.08;
+        const h = 0.6 + rand() * 0.32;
+        const lean = rand() < 0.1 ? (rand() - 0.5) * 0.35 : 0;
         cx += w / 2;
-        if (cx > towerW / 2 - 0.08) break;
-        pos.set(cx, y + h / 2, -0.05);
-        q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), lean);
-        m.compose(pos, q, scl.set(w, h, 0.55));
-        m.premultiply(tower.matrix);
+        if (cx > towerW / 2 - 0.06) break;
+        pos.set(cx, y + h / 2, rand() * 0.05);
+        q.setFromAxisAngle(zAxis, lean);
+        m.compose(pos, q, scl.set(w, h, 0.42 + rand() * 0.08));
+        m.premultiply(towerMatrix);
         books.setMatrixAt(bi, m);
-        const base = palette[Math.floor(Math.random() * palette.length)];
-        col.copy(base).multiplyScalar(0.12 + Math.random() * 0.4);
+        col.setHex(CLOTH[Math.floor(rand() * CLOTH.length)]).multiplyScalar(0.8 + rand() * 0.35);
         books.setColorAt(bi, col);
-        bookPositions.push(new THREE.Vector3(pos.x, pos.y, 0.25).applyMatrix4(tower.matrix));
+        bookPositions.push(new THREE.Vector3(cx, y + h * 0.7, 0.24).applyMatrix4(towerMatrix));
         bi++;
-        cx += w / 2 + 0.02;
+        cx += w / 2 + 0.012;
       }
     }
   }
   books.count = bi;
-  shelfLines.count = si;
-  g.add(books, shelfLines);
+  g.add(books);
 
-  // lineage threads: arcs between books on different towers
-  const threadCount = ctx.quality === 'low' ? 12 : 18;
-  const threads = [];
-  const threadColors = [PALETTE.teal, PALETTE.amber, PALETTE.violet];
+  // red threads: drooping silk between books on different cases
+  const threadCount = low ? 8 : 11;
+  const threadMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.cinnabar,
+    roughness: 0.6,
+    emissive: PALETTE.cinnabar,
+    emissiveIntensity: 0.15
+  });
+  const curves = [];
+  const pick = () => bookPositions[Math.floor(rand() * bookPositions.length)];
   for (let i = 0; i < threadCount; i++) {
-    const a = bookPositions[Math.floor(Math.random() * bookPositions.length)];
-    let b = bookPositions[Math.floor(Math.random() * bookPositions.length)];
+    const a = pick();
+    let b = pick();
     let guard = 0;
-    while (Math.abs(a.x - b.x) < 2 && guard++ < 20) b = bookPositions[Math.floor(Math.random() * bookPositions.length)];
+    // neighbouring cases only, so each thread reads as one clean swag
+    while ((Math.abs(a.x - b.x) < 2 || Math.abs(a.x - b.x) > 5.5) && guard++ < 40) b = pick();
     const mid = a.clone().lerp(b, 0.5);
-    mid.y += 1.2 + Math.random() * 2.2;
-    mid.z += 1.5 + Math.random() * 1.5;
-    const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-    const mat = new THREE.ShaderMaterial({
-      vertexShader: threadVert,
-      fragmentShader: threadFrag,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uSeed: { value: Math.random() },
-        uIntensity: { value: 0.4 },
-        uColor: { value: new THREE.Color(threadColors[i % threadColors.length]) }
-      }
-    });
-    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.022, 4, false), mat);
+    mid.y = Math.max(1.0, Math.min(a.y, b.y) - 0.35 - rand() * 0.5); // sag under its own weight
+    mid.z += 0.5 + rand() * 0.5;
+    const curve = new THREE.CatmullRomCurve3([a, a.clone().lerp(mid, 0.5).setZ(mid.z * 0.8 + a.z * 0.2), mid, b.clone().lerp(mid, 0.5).setZ(mid.z * 0.8 + b.z * 0.2), b]);
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, low ? 28 : 44, 0.014, 5, false), threadMat);
+    mesh.castShadow = true;
     g.add(mesh);
-    threads.push(mat);
+    curves.push(curve);
   }
 
+  // paper tags that travel along the threads during an event
+  const tagGeo = new THREE.BoxGeometry(0.14, 0.2, 0.01);
+  const tagMat = new THREE.MeshStandardMaterial({ color: PALETTE.paper, roughness: 0.9 });
+  const tags = curves.map((c, i) => {
+    const tag = new THREE.Mesh(tagGeo, tagMat);
+    tag.userData = { curve: c, u: rand(), dir: i % 2 ? 1 : -1 };
+    tag.castShadow = true;
+    g.add(tag);
+    return tag;
+  });
+
+  // two stewards reading the threads
+  [-2.2, 3.1].forEach((x, i) => {
+    const f = figure(i + 2);
+    f.position.set(x, 0.22, 1.9 + i * 0.4);
+    f.scale.setScalar(1.15);
+    f.rotation.y = Math.PI + (i ? 0.3 : -0.2);
+    g.add(f);
+  });
+
+  const tmp = new THREE.Vector3();
   zone.activate = () => zone.trigger();
 
   zone.update = (t, dt) => {
     zone.baseUpdate(dt);
     const e = zone.energy;
-    const intensity = 0.35 + zone.focusMix * 0.25 + e * 1.6;
-    for (const mat of threads) {
-      mat.uniforms.uTime.value = t * (1 + e * 2.5);
-      mat.uniforms.uIntensity.value = intensity;
+    threadMat.emissiveIntensity = 0.12 + zone.focusMix * 0.12 + e * 0.9;
+    for (const tag of tags) {
+      const u = tag.userData;
+      // tags drift slowly at rest and race along when the lineage is lit
+      u.u = (u.u + dt * ctx.world.speed * (0.03 + e * 0.35) * u.dir + 1) % 1;
+      u.curve.getPointAt(u.u, tag.position);
+      u.curve.getPointAt(Math.min(0.999, u.u + 0.01), tmp);
+      tag.position.y -= 0.12;
+      tag.rotation.y = Math.atan2(tmp.x - tag.position.x, tmp.z - tag.position.z) + Math.PI / 2;
+      tag.rotation.z = Math.sin(t * 2 + u.u * 20) * 0.15;
     }
-    shelfMat.opacity = 0.35 + 0.1 * Math.sin(t * 1.1) + e * 0.4;
   };
 
-  zone.cameraView = viewFor(zone, 12, 5.5, 0.4);
+  zone.cameraView = viewFor(zone, 12, 5.2, 0.35, 2.9);
   return zone;
 }

@@ -29,40 +29,58 @@ The design stance: **the library becomes the place where answers are slowed down
 
 ## 3. Zones and interactions
 
-The scene is a circular, open-sided hall. A glowing well sits at the centre, four zones surround it at the cardinal diagonals, and a faint geodesic dome and slowly turning orrery rings hang overhead. Tapping or clicking a zone (or its HTML label, or its button in the bottom bar) flies the camera to it, opens the HUD panel and triggers that zone's own event.
+The scene is an open stone courtyard enclosed by a whitewashed wall with moon gates. The Question Well sits at the centre with an ensō brush circle hanging above it, and the four other zones surround it on the diagonals. Tapping or clicking a zone (or its HTML label, or its button in the bottom bar) flies the camera to it, opens the HUD panel and triggers that zone's own event. `?zone=<id>` deep-links straight to a zone.
 
 | # | Zone | What it is | Interaction (tap / click) |
 |---|---|---|---|
-| 1 | **The Question Well** (centre, amber) | A luminous basin. Visitors drop questions in, and refined versions rise as glyphs into a turning armillary. *Answers are cheap; good questions are rare.* | A ripple ring spreads across the surface, the glyph column speeds up and the armillary spins up. |
-| 2 | **Provenance Stacks** (teal) | Shelf towers whose books are joined by threads of light: every text displays its lineage of sources, human or machine. | The lineage threads brighten and pulses run along the citations. |
-| 3 | **Dialogue Alcoves** (indigo/violet) | Round seminar rings where a small group argues with *several* AI tutors that are designed to disagree. | The tutor-orbs speed up and swing into a tighter, overlapping argument, and the voice arcs flare. |
-| 4 | **The Unassisted Room** (warm amber) | An open pavilion with long tables and lanterns. No screens and no assistants, only paper and attention. | **Hush**: the lanterns warm up and the *whole library's* ambient glyph drift slows almost to a stop for a few seconds. |
-| 5 | **Verification Commons** (teal ↔ amber) | A bench where a floating "claim" tablet is scanned in public. Sources are checked and the result is stamped. | A scan ring sweeps the tablet, which turns from amber `UNVERIFIED` to teal `VERIFIED`, and stamp-seals orbit it. |
+| 1 | **The Question Well** 问题之井 (centre) | A limestone basin of still, ink-dark water. Paper question-slips rise from it toward an **ensō** (圆相), a single brush circle left deliberately unclosed: an open question. *Answers are cheap; good questions are rare.* | A ring spreads over the water and an ink ripple crosses the paving. The slips rise faster and the ensō makes a slow half-turn. |
+| 2 | **Provenance Stacks** 溯源书库 | Cedar bookcases in an arc, with books bound in plant-dyed cloth. **Red silk threads** (红线) drape from book to book, tying every text to its sources, human or machine. | The threads warm and paper tags race along them. |
+| 3 | **Dialogue Alcoves** 对话龛 | Three alcoves of curved shoji-paper screens. People sit on cushions around three glazed ceramic tutors that are designed to disagree, joined by fine ink arcs. | The tutors orbit faster and closer, the arcs bow and darken, the screens glow, and people lean in. |
+| 4 | **The Unassisted Room** 无辅助阅览室 | A timber pavilion under a curved hip roof with lifted eaves. It has long tables, open books, paper lanterns and a folding landscape screen, and no AI at all. | **Hush**: the lanterns brighten and the *whole library* slows: falling leaves hang in the air, birds glide, the sun dims and the HUD fades back. |
+| 5 | **Verification Commons** 公共核验台 | A claim hangs as a scroll on a timber frame. A soapstone seal with a cinnabar face waits on a stone stand. | A reading rule sweeps the scroll and ticks each source in turn. Then the seal lifts, stamps 「核验无误」/ VERIFIED in public, and the evidence tags turn celadon. |
 
-Global interactions: drag or one-finger swipe to orbit, pinch or scroll to zoom, an **Overview** button resets the camera, and the panel's **Trigger again** button replays the zone event.
+Global interactions: drag or one-finger swipe to orbit, pinch or scroll to zoom, an **Overview** button resets the camera, and the panel's action button replays the zone event.
+
+## 3a. Visual direction (v2): Ink & Paper Courtyard at Dusk
+
+v1 was a dark "cyber void": polar neon grid floor, floating glyph sprites, thin glowing columns and additive glow everywhere. It read too much like a tech-art demo, so it was retired. v2 commits to one coherent, original vision: **a scholar's courtyard in late-afternoon light, painted with mineral pigments on xuan paper.**
+
+- **Palette.** Xuan-paper cream, limestone and whitewash, sumi ink, cinnabar seal-red, ochre, ginkgo gold, celadon, azurite and aged cedar. No indigo or neon teal.
+- **Light.** One low warm sun with soft shadow maps, against a cool sky-blue hemisphere fill, so shadows read cool and lit faces warm, like a painting. Neutral tone mapping keeps pigments honest. Linear haze fog fades into three layers of **ink-wash mountains** (山水) on the horizon. There are no additive glow sprites anywhere.
+- **Architecture and materials.** Paving stone, plaster walls pierced by **moon gates** (月洞门) and leak windows, cedar, red-brown lacquer, grey roof tile, paper screens, cloth-bound books, soapstone and silk thread.
+- **Calligraphic motion.** The dry-brush ensō (with procedural 飞白, "flying white"), ink ripples spreading across the stone, ginkgo leaves drifting down, and a few ink-tick birds circling high above.
+- **HUD.** Paper cards with ink type and a cinnabar accent. Zone numbers are tiny seals and labels hang like paper tags.
+
+## 3b. Languages: 中文 (default) / EN
+
+- Every user-facing string lives in **`src/i18n.js`**: UI copy, the five zones' names/kickers/body/before/after/action text, and the text painted on the claim scroll. Chinese and English sit **side by side**, so the two can't drift. A dev-mode check warns if keys differ.
+- The default language is **zh-CN**. The **中文 / EN** toggle sits top-right in the HUD. The choice is saved in `localStorage` (`loq-lang`), and `?lang=en` / `?lang=zh` overrides it.
+- Switching language updates static DOM (`data-i18n`, `data-i18n-html`, `data-i18n-aria`), `<html lang>`, the document title and meta description, the zone bar, the floating labels and the open panel. It also **repaints the in-world claim scroll** without reloading the scene.
 
 ## 4. Techniques borrowed from iamtechartist
 
+> v2 keeps the *structural* ideas below (zones in one world, annotated panels, slow mechanisms, a monumental centrepiece, an ambient living world, global mood change). It drops v1's visual vocabulary (glyph particles, neon rings, orrery, geodesic dome); see §3a.
+
 | Technique in this scene | Borrowed from |
 |---|---|
-| Distinct spatial zones in one coherent world, each with its own light colour and mood, and the camera flying between them | **`home-sweet-home`**: one home, four rooms with procedural geometry and dynamic lighting per room |
+| Distinct spatial zones in one coherent world, each with its own material and mood, and the camera flying between them | **`home-sweet-home`**: one home, four rooms with procedural geometry and dynamic lighting per room |
 | Floating HTML labels anchored to 3D positions and a click-to-inspect info panel with context | **`human-cell-visualizer`** (anatomical labels and info panels), **`algebraic-surface-atlas`** (selectable objects and context/metric panels) |
-| Slow, inspectable mechanisms such as the armillary rings, the orbiting tutor-orbs and the scan ring | **`Chronograph`**: real-time mechanical systems for slow inspection, aimed at museums and education |
-| A central monumental object around which the architecture is organised, which reacts to an event | **`sun-temple`**: architecture that transforms around an event, with a glowing molten disc |
-| Particle glyph fields drawn with custom GLSL point sprites | **`human-cell-visualizer`**: particles plus GLSL |
-| Ambient motion always running: drifting glyphs, breathing emissives, a slow floor pulse, turning orrery rings | **`tideglass-cove`** / **`coastal-simulation`**: worlds that are never static |
-| A nested knowledge metaphor (question → armillary → question) and a recursive ring structure | **`obsidian`**: stone → cathedral → whale → stone |
+| Slow, inspectable mechanisms such as the turning ensō, the orbiting ceramic tutors and the reading-rule → seal-stamp sequence | **`Chronograph`**: real-time mechanical systems for slow inspection, aimed at museums and education |
+| A central monumental object around which the architecture is organised, which reacts to an event | **`sun-temple`**: architecture that transforms around an event, with a glowing molten disc (here the Well and its ensō) |
+| Small custom shaders for the sky gradient and the well water; painted canvas textures for everything else | **`human-cell-visualizer`**: GLSL plus procedural content |
+| Ambient motion always running: falling ginkgo leaves, circling birds, swaying lanterns and tags, rising paper slips | **`tideglass-cove`** / **`coastal-simulation`**: worlds that are never static |
+| A nested knowledge metaphor (question → paper slip → unclosed circle → new question) | **`obsidian`**: stone → cathedral → whale → stone |
 | A global mood change from one zone (the "Hush" slows the whole world) | **`mountain-railway-diorama`** / **`Four-Seasons`**: global mode or season changes on one world |
 
-Everything is **procedural**: there are no models, no image textures and no CDN assets. The glyph atlas, glow sprites and tablet text are drawn into `<canvas>` at runtime, and the floor grid, water, threads and particles use small custom shaders.
+Everything is **procedural**: there are no models, no image textures and no CDN assets. Paving, paper, the dry-brush stroke, leaves, mountains, the shoji lattice, the folding-screen painting and the bilingual claim scroll are all painted into `<canvas>` at runtime.
 
 ## 5. Mobile and deployment notes
 
 - `vite.config.js` sets `base: './'`, so `dist/` works under any GitHub Pages sub-path.
 - `OrbitControls` handle one-finger rotate and two-finger pinch-zoom. Panning is disabled for simpler touch, and `touch-action: none` is set on the canvas.
-- `devicePixelRatio` is capped at 1.5 on touch/small screens and 2 on desktop. Particle counts drop on phones, and antialiasing is off on small screens.
-- There is no post-processing. Glow comes from emissive materials, additive sprites, ACES tone mapping and exponential fog.
-- The HUD uses `env(safe-area-inset-*)`, 48px+ tap targets, a bottom-sheet panel on narrow screens and `100dvh` sizing. The instruction text switches between touch and mouse wording with `(hover: none)`.
+- `devicePixelRatio` is capped at 1.5 on touch/small screens and 2 on desktop. On phones the shadow map drops to 1024² with plain PCF, there are fewer leaves, books and threads, foliage and roofs are lower-poly, mountain textures are smaller, and antialiasing is off.
+- There is no post-processing: mood comes from one shadowed sun, hemisphere fill, fog and painted canvas textures. Everything is procedural: no models, image files or CDN assets.
+- The HUD uses `env(safe-area-inset-*)`, 44–52px tap targets (including the language toggle), a bottom-sheet panel on narrow screens and `100dvh` sizing. The instruction text switches between touch and mouse wording with `(hover: none)`.
 - Motion respects `prefers-reduced-motion`.
 
 ## 6. Research summary (from `RESEARCH_IAMTECHARTIST.md`)

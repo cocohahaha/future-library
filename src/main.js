@@ -3,15 +3,18 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { PALETTE, ZONES } from './zones/data.js';
+import { t, applyStatic, onLangChange } from './i18n.js';
 import { createEnvironment } from './scene/environment.js';
-import { createGlyphField } from './scene/glyphField.js';
-import { makeGlowTexture, makeGlyphAtlas } from './scene/textures.js';
+import { createLeaves } from './scene/leaves.js';
 import { createWell } from './zones/well.js';
 import { createProvenance } from './zones/provenance.js';
 import { createDialogue } from './zones/dialogue.js';
 import { createQuiet } from './zones/quiet.js';
 import { createVerify } from './zones/verify.js';
 import { createHUD } from './ui/hud.js';
+
+// language first, so the loader and HUD never flash the wrong copy
+applyStatic();
 
 // ---------------------------------------------------------------- device tier
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -27,19 +30,22 @@ let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'high', powerPreference: 'high-performance' });
 } catch (err) {
-  document.getElementById('loader').innerHTML = '<span>WebGL is not available on this device.</span>';
+  document.getElementById('loader').innerHTML = `<span>${t('noWebGL')}</span>`;
   throw err;
 }
 renderer.setPixelRatio(pixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight, false);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+// Neutral tone mapping keeps paper, stone and pigment colours honest
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = quality === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(PALETTE.bg);
-scene.fog = new THREE.FogExp2(PALETTE.fog, 0.021);
+scene.background = new THREE.Color(PALETTE.haze);
+scene.fog = new THREE.Fog(PALETTE.haze, 34, 175);
 
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 220);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -64,36 +70,15 @@ const world = {
   }
 };
 
-const ctx = {
-  quality,
-  world,
-  fields: [],
-  glow: makeGlowTexture(),
-  atlas: makeGlyphAtlas(),
-  pixelRatio: pixelRatio(),
-  env: null
-};
+const ctx = { quality, world, env: null };
 
 const env = createEnvironment({ quality });
 ctx.env = env;
 scene.add(env.group);
 
-// ambient glyph atmosphere filling the whole hall
-const ambient = createGlyphField({
-  count: quality === 'low' ? 650 : 1500,
-  radius: 30,
-  innerRadius: 2,
-  height: 20,
-  size: 1.0,
-  glyphRatio: 0.28,
-  sway: 0.9,
-  speed: 0.35,
-  colors: [PALETTE.teal, PALETTE.indigo, PALETTE.amber],
-  atlas: ctx.atlas,
-  pixelRatio: ctx.pixelRatio
-});
-scene.add(ambient.points);
-ctx.fields.push(ambient);
+// ginkgo leaves drifting through the whole courtyard
+const leaves = createLeaves({ count: quality === 'low' ? 90 : 170, radius: 32, height: 15 });
+scene.add(leaves.mesh);
 
 // ---------------------------------------------------------------- zones
 const builders = {
@@ -109,6 +94,8 @@ for (const z of zones) scene.add(z.group);
 scene.updateMatrixWorld(true);
 // views depend on world positions, so finalise them after placement
 const hitMeshes = zones.flatMap((z) => z.hits);
+// zones that paint text into the scene (the claim scroll) repaint on toggle
+onLangChange(() => zones.forEach((z) => z.onLang && z.onLang()));
 
 // ---------------------------------------------------------------- camera views
 const overview = { position: new THREE.Vector3(), target: new THREE.Vector3(0, 2.5, 0) };
@@ -228,7 +215,6 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   computeOverview();
-  for (const f of ctx.fields) f.setPixelRatio(renderer.getPixelRatio());
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 150));
@@ -273,8 +259,9 @@ function frame(now) {
     if (tween.t >= 1) tween = null;
   }
 
-  env.update(t, dt * world.speed);
-  for (const f of ctx.fields) f.update(t, dt, world.speed);
+  const hush = 1 - (world.speed - 0.08) / 0.92;
+  env.update(t, dt * world.speed, hush);
+  leaves.update(dt, world.speed);
   for (const z of zones) z.update(t, dt);
 
   controls.update(dt);
@@ -284,7 +271,10 @@ function frame(now) {
   if (!introDone) {
     introDone = true;
     document.getElementById('loader').classList.add('is-done');
-    flyTo(overview, 3.2);
+    // deep link: ?zone=verify opens straight onto a zone
+    const deep = new URLSearchParams(location.search).get('zone');
+    if (zoneById[deep]) select(deep);
+    else flyTo(overview, 3.2);
   }
   requestAnimationFrame(frame);
 }
