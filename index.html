@@ -51,7 +51,11 @@
       <nav class="zonebar" id="zonebar" data-i18n-aria="zonebar" aria-label="图书馆分区"></nav>
     </div>
 
-    <div class="loader" id="loader"><span class="loader-enso" aria-hidden="true"></span><span data-i18n="loader">研墨中……</span></div>
+    <div class="loader" id="loader">
+      <span class="loader-enso" aria-hidden="true"></span>
+      <span class="loader-text" data-i18n="loader">研墨中……</span>
+      <span class="loader-bar" aria-hidden="true"><span id="loader-progress"></span></span>
+    </div>
     <noscript>此体验需要 JavaScript 与 WebGL。This experience needs JavaScript and WebGL.</noscript>
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -2,66 +2,75 @@ import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { PALETTE, ZONES } from './zones/data.js';
+import { detectTier, TIERS } from './core/config.js';
+import { U } from './core/materials.js';
+import { createPost } from './core/post.js';
+import { createGovernor } from './core/perf.js';
+import { buildWorld } from './world/world.js';
+import { terrainHeight } from './world/layout.js';
 import { t, applyStatic, onLangChange } from './i18n.js';
-import { createEnvironment } from './scene/environment.js';
-import { createLeaves } from './scene/leaves.js';
-import { createWell } from './zones/well.js';
-import { createProvenance } from './zones/provenance.js';
-import { createDialogue } from './zones/dialogue.js';
-import { createQuiet } from './zones/quiet.js';
-import { createVerify } from './zones/verify.js';
 import { createHUD } from './ui/hud.js';
 
 // language first, so the loader and HUD never flash the wrong copy
 applyStatic();
 
 // ---------------------------------------------------------------- device tier
+const tier = TIERS[detectTier()];
 const coarse = matchMedia('(pointer: coarse)').matches;
-const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 720;
-const quality = coarse || smallScreen ? 'low' : 'high';
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const maxPR = quality === 'low' ? 1.5 : 2;
-const pixelRatio = () => Math.min(window.devicePixelRatio || 1, maxPR);
+document.documentElement.dataset.tier = tier.name;
 
 // ---------------------------------------------------------------- renderer
 const canvas = document.getElementById('scene');
+const loaderEl = document.getElementById('loader');
+const progressEl = document.getElementById('loader-progress');
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'high', powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
 } catch (err) {
-  document.getElementById('loader').innerHTML = `<span>${t('noWebGL')}</span>`;
+  loaderEl.innerHTML = `<span>${t('noWebGL')}</span>`;
   throw err;
 }
-renderer.setPixelRatio(pixelRatio());
-renderer.setSize(window.innerWidth, window.innerHeight, false);
-// Neutral tone mapping keeps paper, stone and pigment colours honest
-renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMapping = THREE.NoToneMapping; // the post pass tone-maps
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = quality === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = tier.shadowSoft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false; // the world is static; shadows render once
+
+// render-pixel budget: cap the pixel ratio so the frame stays within the tier's megapixels
+const governor = createGovernor({ minScale: tier.minScale, onChange: () => resize() });
+function pixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
+  const mpCap = Math.sqrt((tier.megapixels * 1e6) / (window.innerWidth * window.innerHeight));
+  return Math.max(0.5, Math.min(dpr, tier.maxDpr, mpCap) * governor.scale);
+}
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(PALETTE.haze);
-scene.fog = new THREE.Fog(PALETTE.haze, 34, 175);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.3, 4000);
+const post = createPost(renderer, tier);
 
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 220);
-
+// ---------------------------------------------------------------- controls
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
-controls.dampingFactor = 0.07;
-controls.enablePan = false;
-controls.minDistance = 6;
-controls.maxDistance = 44;
-controls.maxPolarAngle = Math.PI * 0.47;
-controls.minPolarAngle = Math.PI * 0.12;
-controls.rotateSpeed = coarse ? 0.6 : 0.5;
-controls.zoomSpeed = 0.8;
-controls.autoRotate = !reducedMotion;
-controls.autoRotateSpeed = 0.25;
-controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
+controls.dampingFactor = 0.075;
+controls.enablePan = true;
+controls.screenSpacePanning = false; // pan across the ground
+controls.panSpeed = coarse ? 1.1 : 0.9;
+controls.minDistance = 3.5;
+controls.maxDistance = 300;
+controls.maxPolarAngle = Math.PI * 0.485;
+controls.minPolarAngle = Math.PI * 0.06;
+controls.rotateSpeed = coarse ? 0.65 : 0.5;
+controls.zoomSpeed = 0.9;
+controls.zoomToCursor = !coarse;
+controls.autoRotate = false;
+controls.autoRotateSpeed = 0.18;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.enabled = false; // until the intro lands
 
-// ---------------------------------------------------------------- shared context
+// ---------------------------------------------------------------- shared state
+let clockTime = 0;
 const world = {
   speed: 1,
   hushUntil: 0,
@@ -70,144 +79,195 @@ const world = {
   }
 };
 
-const ctx = { quality, world, env: null };
-
-const env = createEnvironment({ quality });
-ctx.env = env;
-scene.add(env.group);
-
-// ginkgo leaves drifting through the whole courtyard
-const leaves = createLeaves({ count: quality === 'low' ? 90 : 170, radius: 32, height: 15 });
-scene.add(leaves.mesh);
-
-// ---------------------------------------------------------------- zones
-const builders = {
-  well: createWell,
-  provenance: createProvenance,
-  dialogue: createDialogue,
-  quiet: createQuiet,
-  verify: createVerify
-};
-const zones = ZONES.map((def) => builders[def.id](def, ctx));
-const zoneById = Object.fromEntries(zones.map((z) => [z.def.id, z]));
-for (const z of zones) scene.add(z.group);
-scene.updateMatrixWorld(true);
-// views depend on world positions, so finalise them after placement
-const hitMeshes = zones.flatMap((z) => z.hits);
-// zones that paint text into the scene (the claim scroll) repaint on toggle
-onLangChange(() => zones.forEach((z) => z.onLang && z.onLang()));
-
 // ---------------------------------------------------------------- camera views
-const overview = { position: new THREE.Vector3(), target: new THREE.Vector3(0, 2.5, 0) };
+const overview = { position: new THREE.Vector3(), target: new THREE.Vector3() };
 function computeOverview() {
   const portrait = camera.aspect < 0.85;
-  camera.fov = portrait ? 64 : 50;
+  camera.fov = portrait ? 62 : 48;
   camera.updateProjectionMatrix();
-  // pull back further on tall phones so the whole ring fits
-  const d = portrait ? 38 : 26;
-  overview.position.set(0, portrait ? 19 : 15, d);
+  if (portrait) {
+    overview.position.set(70, 92, 128);
+    overview.target.set(-8, 0, 0);
+  } else {
+    overview.position.set(56, 46, 82);
+    overview.target.set(-7, 2, -4);
+  }
 }
 computeOverview();
-camera.position.set(-14, 30, 30); // intro: descend from above into the overview
-controls.target.copy(overview.target);
+camera.position.set(260, 210, 380);
+controls.target.set(-20, 0, -40);
+camera.lookAt(controls.target);
 
 let tween = null;
-function flyTo(view, duration = 1.7) {
+function flyTo(view, duration = 1.9) {
+  const from = camera.position.clone();
+  const dist = from.distanceTo(view.position);
   tween = {
-    fromPos: camera.position.clone(),
+    fromPos: from,
     fromTarget: controls.target.clone(),
     toPos: view.position.clone(),
     toTarget: view.target.clone(),
+    lift: Math.min(28, dist * 0.22),
     t: 0,
     duration: reducedMotion ? 0.01 : duration
   };
+  controls.autoRotate = false;
 }
 const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 controls.addEventListener('start', () => {
-  tween = null; // user takes over
+  tween = null; // the user takes over
   controls.autoRotate = false;
+  idleSince = clockTime;
 });
 
-// ---------------------------------------------------------------- selection
+// ---------------------------------------------------------------- build the world
+let W = null;
+let hud = null;
 let active = null;
-const hud = createHUD({
-  zones,
-  onSelect: (id) => select(id),
-  onActivate: () => active && active.activate(),
-  onOverview: () => clearSelection()
-});
+let idleSince = 0;
 
-function select(id) {
-  const zone = zoneById[id];
-  if (!zone) return;
-  if (active && active !== zone) active.focused = false;
-  active = zone;
-  zone.focused = true;
-  zone.activate();
-  hud.setActive(id);
-  hud.show(zone);
-  controls.autoRotate = false;
-  // tall phone screens need more distance to frame the same zone
-  const v = zone.cameraView;
-  const k = camera.aspect < 0.85 ? 1.5 : 1;
-  flyTo({ target: v.target, position: v.position.clone().sub(v.target).multiplyScalar(k).add(v.target) });
+function setProgress(p) {
+  if (progressEl) progressEl.style.transform = `scaleX(${Math.max(0.04, p).toFixed(3)})`;
 }
 
-function clearSelection() {
-  if (active) active.focused = false;
-  active = null;
-  hud.setActive(null);
-  hud.hide();
-  flyTo(overview, 1.9);
-}
+async function start() {
+  resize();
+  W = await buildWorld({ scene, tier, world, onProgress: (p) => setProgress(p) });
+  const zones = W.zones;
+  const zoneById = Object.fromEntries(zones.map((z) => [z.def.id, z]));
+  const hitMeshes = zones.flatMap((z) => z.hits);
+  onLangChange(() => zones.forEach((z) => z.onLang && z.onLang()));
 
-// tap / click picking — distinguishes taps from orbit drags
-const raycaster = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-const pointers = new Map();
-let tapCandidate = null;
+  hud = createHUD({
+    zones,
+    onSelect: (id) => select(id),
+    onActivate: () => active && active.activate(),
+    onOverview: () => clearSelection()
+  });
 
-canvas.addEventListener('pointerdown', (e) => {
-  pointers.set(e.pointerId, true);
-  tapCandidate = pointers.size === 1 ? { x: e.clientX, y: e.clientY, time: performance.now(), id: e.pointerId } : null;
-});
-canvas.addEventListener('pointerup', (e) => {
-  pointers.delete(e.pointerId);
-  if (!tapCandidate || tapCandidate.id !== e.pointerId) return;
-  const moved = Math.hypot(e.clientX - tapCandidate.x, e.clientY - tapCandidate.y);
-  const quick = performance.now() - tapCandidate.time < 450;
-  tapCandidate = null;
-  if (moved > (coarse ? 12 : 6) || !quick) return;
+  function select(id) {
+    const zone = zoneById[id];
+    if (!zone) return;
+    if (active && active !== zone) active.focused = false;
+    active = zone;
+    zone.focused = true;
+    zone.activate();
+    W.setFocusZone(zone);
+    hud.setActive(id);
+    hud.show(zone);
+    // tall phone screens need more distance to frame the same zone
+    const v = zone.cameraView;
+    const k = camera.aspect < 0.85 ? 1.55 : 1;
+    flyTo({ target: v.target, position: v.position.clone().sub(v.target).multiplyScalar(k).add(v.target) });
+  }
+  function clearSelection() {
+    if (active) active.focused = false;
+    active = null;
+    W.setFocusZone(null);
+    hud.setActive(null);
+    hud.hide();
+    flyTo(overview, 2.2);
+  }
+  window.__select = select;
 
-  const rect = canvas.getBoundingClientRect();
-  ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-  raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObjects(hitMeshes, false)[0];
-  if (hit) select(hit.object.userData.zoneId);
-});
-canvas.addEventListener('pointercancel', (e) => {
-  pointers.delete(e.pointerId);
-  tapCandidate = null;
-});
-
-// hover cursor on desktop
-if (!coarse) {
-  canvas.addEventListener('pointermove', (e) => {
-    if (pointers.size) return;
+  // ---- tap / click picking (distinguishes taps from orbit drags), double-tap travel
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  const pointers = new Map();
+  let tapCandidate = null;
+  let lastTap = { time: 0, x: 0, y: 0 };
+  const toNDC = (e) => {
     const rect = canvas.getBoundingClientRect();
     ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
-    canvas.style.cursor = raycaster.intersectObjects(hitMeshes, false).length ? 'pointer' : 'grab';
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, true);
+    tapCandidate = pointers.size === 1 ? { x: e.clientX, y: e.clientY, time: performance.now(), id: e.pointerId } : null;
   });
+  canvas.addEventListener('pointerup', (e) => {
+    pointers.delete(e.pointerId);
+    if (!tapCandidate || tapCandidate.id !== e.pointerId) return;
+    const moved = Math.hypot(e.clientX - tapCandidate.x, e.clientY - tapCandidate.y);
+    const quick = performance.now() - tapCandidate.time < 450;
+    tapCandidate = null;
+    if (moved > (coarse ? 12 : 6) || !quick) return;
+    toNDC(e);
+    raycaster.setFromCamera(ndc, camera);
+    const now = performance.now();
+    const dbl = now - lastTap.time < 360 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+    lastTap = { time: now, x: e.clientX, y: e.clientY };
+    if (dbl) {
+      // travel: glide to the tapped spot on the ground, keeping the view direction
+      const hit = raycaster.intersectObject(W.terrain.mesh, false)[0];
+      if (hit) {
+        const dir = camera.position.clone().sub(controls.target).normalize();
+        const dist = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target), 14, 40);
+        const target = hit.point.clone().add(new THREE.Vector3(0, 1.4, 0));
+        flyTo({ target, position: target.clone().addScaledVector(dir, dist) }, 1.6);
+      }
+      return;
+    }
+    const hit = raycaster.intersectObjects(hitMeshes, false)[0];
+    if (hit) select(hit.object.userData.zoneId);
+  });
+  canvas.addEventListener('pointercancel', (e) => {
+    pointers.delete(e.pointerId);
+    tapCandidate = null;
+  });
+  if (!coarse) {
+    canvas.addEventListener('pointermove', (e) => {
+      if (pointers.size) return;
+      toNDC(e);
+      raycaster.setFromCamera(ndc, camera);
+      canvas.style.cursor = raycaster.intersectObjects(hitMeshes, false).length ? 'pointer' : 'grab';
+    });
+  }
+
+  // ---- keyboard: 1–5 zones, Esc overview, WASD / arrows to walk the view
+  const keys = new Set();
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.key === 'Escape') clearSelection();
+    const n = Number(e.key);
+    if (n >= 1 && n <= zones.length) select(zones[n - 1].def.id);
+    keys.add(e.key.toLowerCase());
+  });
+  window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+  window.addEventListener('blur', () => keys.clear());
+  W.walkKeys = keys;
+
+  // ---- first frame: compile, render shadows once, reveal
+  await renderer.compileAsync(scene, camera).catch(() => {});
+  renderer.shadowMap.needsUpdate = true;
+  setProgress(1);
+  loaderEl.classList.add('is-done');
+  document.body.classList.add('is-ready');
+  const params = new URLSearchParams(location.search);
+  const deep = params.get('zone');
+  const camParam = params.get('cam');
+  if (camParam) {
+    const c = camParam.split(',').map(Number);
+    camera.position.set(c[0], c[1], c[2]);
+    controls.target.set(c[3], c[4], c[5]);
+  } else if (zoneById[deep]) {
+    camera.position.copy(overview.position).add(new THREE.Vector3(0, 30, 40));
+    if (params.get('intro') === '0') tween = null;
+    select(deep);
+    if (params.get('intro') === '0') tween.duration = 0.01;
+  } else if (params.get('intro') === '0') {
+    camera.position.copy(overview.position);
+    controls.target.copy(overview.target);
+  } else flyTo(overview, reducedMotion ? 0.01 : 4.2);
+  if (params.get('stats')) {
+    renderer.info.autoReset = false;
+    window.__stats = () => ({ ...renderer.info.render });
+  }
+  controls.enabled = true;
+  idleSince = clockTime;
 }
 
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') clearSelection();
-  const n = Number(e.key);
-  if (n >= 1 && n <= zones.length) select(zones[n - 1].def.id);
-});
-
 // ---------------------------------------------------------------- resize
+const db = new THREE.Vector2();
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
@@ -215,67 +275,101 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   computeOverview();
+  renderer.getDrawingBufferSize(db);
+  post.setSize(db.x, db.y);
+  if (W && W.water.mirror) W.water.mirror.setSize(db.x, db.y);
 }
 window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(resize, 150));
-resize();
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
 // ---------------------------------------------------------------- loop
-let clockTime = 0;
 let last = performance.now();
-let introDone = false;
 let viewShift = 0;
+let windFlow = 0;
+const move = new THREE.Vector3();
+const fwd = new THREE.Vector3();
+const right = new THREE.Vector3();
 
 function frame(now) {
-  const dt = Math.min((now - last) / 1000, 1 / 20);
+  requestAnimationFrame(frame);
+  const rawDt = (now - last) / 1000;
   last = now;
+  if (document.hidden) return;
+  const dt = Math.min(rawDt, 1 / 20);
+  governor.sample(rawDt);
   const motion = reducedMotion ? 0.35 : 1;
   clockTime += dt * motion;
-  const t = clockTime;
 
-  // global hush from the Unassisted Room eases the whole library's motion
-  const targetSpeed = t < world.hushUntil ? 0.08 : 1;
+  // the Unassisted Room's hush eases the whole library's motion
+  const hushed = clockTime < world.hushUntil;
+  const targetSpeed = hushed ? 0.08 : 1;
   world.speed += (targetSpeed - world.speed) * Math.min(1, dt * (targetSpeed < world.speed ? 2.2 : 0.8));
-  document.body.classList.toggle('is-hushed', t < world.hushUntil);
+  document.body.classList.toggle('is-hushed', hushed);
+  const hush = 1 - (world.speed - 0.08) / 0.92;
+  U.uTime.value += dt * motion * world.speed;
+  windFlow += dt * motion * (0.35 + 0.65 * world.speed);
+  U.uWindTime.value = windFlow;
 
-  // On narrow screens the panel is a bottom sheet: shift the projection centre
-  // up so the focused zone sits in the visible area above it.
+  // narrow screens: the panel is a bottom sheet, so lift the projection centre
   const sheetOpen = active && window.innerWidth <= 720;
   const offTarget = sheetOpen ? window.innerHeight * 0.2 : 0;
   viewShift += (offTarget - viewShift) * Math.min(1, dt * 4);
-  if (Math.abs(viewShift) > 0.5) {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    camera.setViewOffset(w, h, 0, viewShift, w, h);
-  } else if (camera.view && camera.view.enabled) {
-    camera.clearViewOffset();
-  }
+  if (Math.abs(viewShift) > 0.5) camera.setViewOffset(window.innerWidth, window.innerHeight, 0, viewShift, window.innerWidth, window.innerHeight);
+  else if (camera.view && camera.view.enabled) camera.clearViewOffset();
 
   if (tween) {
     tween.t += dt / tween.duration;
     const k = easeInOut(Math.min(1, tween.t));
     camera.position.lerpVectors(tween.fromPos, tween.toPos, k);
+    camera.position.y += Math.sin(k * Math.PI) * tween.lift;
     controls.target.lerpVectors(tween.fromTarget, tween.toTarget, k);
     if (tween.t >= 1) tween = null;
   }
 
-  const hush = 1 - (world.speed - 0.08) / 0.92;
-  env.update(t, dt * world.speed, hush);
-  leaves.update(dt, world.speed);
-  for (const z of zones) z.update(t, dt);
+  // keyboard walking (desktop)
+  if (W && W.walkKeys && W.walkKeys.size && !tween) {
+    camera.getWorldDirection(fwd);
+    fwd.y = 0;
+    fwd.normalize();
+    right.crossVectors(fwd, camera.up).normalize();
+    move.set(0, 0, 0);
+    const k = W.walkKeys;
+    if (k.has('w') || k.has('arrowup')) move.add(fwd);
+    if (k.has('s') || k.has('arrowdown')) move.sub(fwd);
+    if (k.has('d') || k.has('arrowright')) move.add(right);
+    if (k.has('a') || k.has('arrowleft')) move.sub(right);
+    if (move.lengthSq() > 0) {
+      const sp = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * 0.9, 6, 60) * dt;
+      move.normalize().multiplyScalar(sp);
+      camera.position.add(move);
+      controls.target.add(move);
+    }
+  }
+
+  // idle in the overview: drift slowly around the valley
+  if (W && !active && !tween && clockTime - idleSince > 14 && !reducedMotion) controls.autoRotate = true;
 
   controls.update(dt);
-  renderer.render(scene, camera);
-  hud.updateLabels(camera, window.innerWidth, window.innerHeight);
+  // keep the view inside the valley and above the ground
+  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -190, 190);
+  controls.target.z = THREE.MathUtils.clamp(controls.target.z, -210, 210);
+  controls.target.y = THREE.MathUtils.clamp(controls.target.y, -1, 28);
+  const ground = terrainHeight(camera.position.x, camera.position.z) + 1.2;
+  if (camera.position.y < ground) camera.position.y = ground;
 
-  if (!introDone) {
-    introDone = true;
-    document.getElementById('loader').classList.add('is-done');
-    // deep link: ?zone=verify opens straight onto a zone
-    const deep = new URLSearchParams(location.search).get('zone');
-    if (zoneById[deep]) select(deep);
-    else flyTo(overview, 3.2);
+  if (W) {
+    W.update(clockTime, dt, world.speed, hush);
+    if (W.water.mirror && governor.scale > 0.75) W.water.mirror.update(renderer, scene, camera);
   }
-  requestAnimationFrame(frame);
+  if (!renderer.info.autoReset) renderer.info.reset();
+  post.render(scene, camera, clockTime);
+  if (hud) hud.updateLabels(camera, window.innerWidth, window.innerHeight);
 }
 requestAnimationFrame(frame);
+start().catch((err) => {
+  console.error(err);
+  loaderEl.innerHTML = `<span>${t('noWebGL')}</span>`;
+});
+
+// debugging handle
+window.__loq = { scene, camera, renderer, U, post, controls, governor, tier, get world() { return W; } };

@@ -1,23 +1,26 @@
 import * as THREE from 'three';
-import { createZoneBase, viewFor, wood, stone, figure, shadows, easeInOut } from './common.js';
-import { rng } from '../scene/textures.js';
+import { createZoneBase, view, easeInOut } from './common.js';
+import { rng } from '../core/rng.js';
 import { getLang, scrollText } from '../i18n.js';
-import { PALETTE } from './data.js';
+import { patch } from '../core/materials.js';
+import { MAT } from '../core/builder.js';
+import { PAL } from '../core/config.js';
+import { bench, table, bookPile, noticeBoard, hangingLantern, lanternPost } from '../props/props.js';
 
-// A claim hangs as a scroll on a timber frame. Activation: a reading rule
-// sweeps down the scroll, ticking each source in turn; then the cinnabar seal
-// (印章) lifts from its stand and stamps the claim in public.
+// Verification Commons (公共核验台): an open hall facing a public square. A
+// claim hangs as a scroll on a timber frame. Activation: a reading rule
+// sweeps down the scroll ticking each source in turn; then the cinnabar seal
+// (印章) lifts from its stand and stamps the claim in public, and the
+// evidence tags turn celadon. The audience on the square watches.
 
 const SW = 512;
 const SH = 760;
-const SCROLL_W = 2.2;
+const SCROLL_W = 2.1;
 const SCROLL_H = (SCROLL_W * SH) / SW;
-const SCROLL_Y = 3.05;
-const SOURCE_Y0 = 372; // canvas y of the first source line
+const SOURCE_Y0 = 372;
 const SOURCE_DY = 54;
 const SEAL_CY = 640;
 const SEAL_PX = 118;
-
 const SERIF_ZH = '"Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, "SimSun", serif';
 const SERIF_EN = 'Georgia, "Iowan Old Style", "Noto Serif", serif';
 
@@ -27,8 +30,6 @@ function drawScroll(c, checked, sealed) {
   const zh = getLang() === 'zh';
   const serif = zh ? SERIF_ZH : SERIF_EN;
   const rand = rng(4);
-
-  // silk mounting and paper
   g.fillStyle = '#c4ad84';
   g.fillRect(0, 0, SW, SH);
   g.fillStyle = '#f4ecdc';
@@ -39,23 +40,19 @@ function drawScroll(c, checked, sealed) {
     g.arc(26 + rand() * (SW - 52), 34 + rand() * (SH - 68), 4 + rand() * 26, 0, Math.PI * 2);
     g.fill();
   }
-
   g.textBaseline = 'alphabetic';
   g.fillStyle = 'rgba(36,32,29,0.6)';
   g.font = `500 ${zh ? 24 : 22}px ${serif}`;
   g.fillText(copy.number, 58, 94);
   g.fillRect(58, 110, SW - 116, 2);
-
   g.fillStyle = '#24201d';
   g.font = `${zh ? 600 : 'italic 400'} ${zh ? 40 : 37}px ${serif}`;
   copy.claim.forEach((l, i) => g.fillText(l, 58, 176 + i * 54));
-
   g.font = `${zh ? 26 : 24}px ${serif}`;
   copy.sources.forEach((s, i) => {
     const y = SOURCE_Y0 + i * SOURCE_DY;
     const done = i < checked;
     if (done) {
-      // a quick cinnabar brush tick
       g.strokeStyle = '#b0432c';
       g.lineWidth = 5;
       g.lineCap = 'round';
@@ -74,20 +71,17 @@ function drawScroll(c, checked, sealed) {
     g.fillStyle = done ? '#24201d' : 'rgba(36,32,29,0.7)';
     g.fillText(s, 104, y);
   });
-
   g.save();
   g.translate(SW / 2, SEAL_CY);
   if (sealed) {
     g.rotate(-0.04);
     g.fillStyle = '#b0432c';
     g.fillRect(-SEAL_PX / 2, -SEAL_PX / 2, SEAL_PX, SEAL_PX);
-    // worn edges: knock tiny flecks out of the seal print
     g.fillStyle = '#f4ecdc';
     for (let i = 0; i < 40; i++) g.fillRect((rand() - 0.5) * SEAL_PX, (rand() < 0.5 ? -1 : 1) * SEAL_PX * 0.5 - 2 + rand() * 4, 2 + rand() * 3, 2 + rand() * 3);
     g.strokeStyle = '#f4ecdc';
     g.lineWidth = 3;
     g.strokeRect(-SEAL_PX / 2 + 8, -SEAL_PX / 2 + 8, SEAL_PX - 16, SEAL_PX - 16);
-    g.fillStyle = '#f4ecdc';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.font = `700 ${zh ? 40 : 30}px ${serif}`;
@@ -109,34 +103,33 @@ function drawScroll(c, checked, sealed) {
 }
 
 export function createVerify(def, ctx) {
-  const zone = createZoneBase(def, { hitRadius: 5.5, hitHeight: 7, lightY: 3.5, lightIntensity: 7 });
+  const A = ctx.anchors.verify;
+  const zone = createZoneBase(def, { hit: [A.W + 3, 9, A.D + 8], hitOffset: [0, 0, 2] });
   const g = zone.group;
+  const { B, crowd, kit } = ctx;
+  const rand = rng(31);
+  const X = A.x;
+  const Z = A.z;
+  const Y = A.floor;
+  const fz = Z - 1.0; // frame plane
+  const SCROLL_Y = Y + 2.75;
+  zone.lamp = { x: X, y: Y + 3, z: Z + 1.5, intensity: 8, distance: 14 };
 
-  const dais = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 3.95, 0.2, 6), stone(0xcfc3ae));
-  dais.position.y = 0.1;
-  g.add(shadows(dais));
+  // timber frame in the centre bay
+  const fw = 4.2;
+  for (const sx of [-1, 1]) {
+    B.box('solid', 0x5e3c28, 0.2, 4.9, 0.2, X + sx * (fw / 2), Y, fz - 0.15, { kind: MAT.wood, chamfer: 0.02 });
+    B.box('solid', 0x5e3c28, 0.5, 0.25, 0.9, X + sx * (fw / 2), Y, fz - 0.15, { kind: MAT.wood });
+  }
+  B.box('solid', 0x5e3c28, fw + 0.5, 0.22, 0.26, X, Y + 4.9, fz - 0.15, { kind: MAT.wood, chamfer: 0.02 });
 
-  // timber frame
-  const frameMat = wood(0x5e3c28);
-  const postGeo = new THREE.BoxGeometry(0.2, 5.2, 0.2);
-  [-1.75, 1.75].forEach((x) => {
-    const p = new THREE.Mesh(postGeo, frameMat);
-    p.position.set(x, 2.8, -0.15);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.25, 0.9), frameMat);
-    foot.position.set(x, 0.32, -0.15);
-    g.add(shadows(p), shadows(foot));
-  });
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.22, 0.26), frameMat);
-  beam.position.set(0, 5.3, -0.15);
-  g.add(shadows(beam));
-
-  // the scroll
+  // the scroll (canvas repainted per state and language)
   const scrollCanvas = document.createElement('canvas');
   scrollCanvas.width = SW;
   scrollCanvas.height = SH;
   const scrollTex = new THREE.CanvasTexture(scrollCanvas);
   scrollTex.colorSpace = THREE.SRGBColorSpace;
-  scrollTex.anisotropy = 4;
+  scrollTex.anisotropy = 8;
   let shown = { checked: -1, sealed: null, lang: null };
   const paint = (checked, sealed) => {
     const lang = getLang();
@@ -148,102 +141,110 @@ export function createVerify(def, ctx) {
   paint(0, false);
   const scroll = new THREE.Mesh(
     new THREE.PlaneGeometry(SCROLL_W, SCROLL_H),
-    new THREE.MeshStandardMaterial({ map: scrollTex, roughness: 0.92, side: THREE.DoubleSide })
+    patch(new THREE.MeshStandardMaterial({ map: scrollTex, roughness: 0.92, side: THREE.DoubleSide, emissive: 0xffffff, emissiveMap: scrollTex, emissiveIntensity: 0.12 }), 'scroll')
   );
-  scroll.position.set(0, SCROLL_Y, 0);
+  scroll.position.set(X, SCROLL_Y, fz);
   scroll.castShadow = true;
   g.add(scroll);
+  const rollerMat = patch(new THREE.MeshStandardMaterial({ color: 0x3b2619, roughness: 0.6 }), 'roller');
   const rollerGeo = new THREE.CylinderGeometry(0.05, 0.05, SCROLL_W + 0.24, 10);
   rollerGeo.rotateZ(Math.PI / 2);
-  const rollerMat = wood(0x3b2619);
-  const rTop = new THREE.Mesh(rollerGeo, rollerMat);
-  rTop.position.set(0, SCROLL_Y + SCROLL_H / 2, 0.02);
-  const rBot = rTop.clone();
-  rBot.position.y = SCROLL_Y - SCROLL_H / 2;
-  const cord = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-0.7, SCROLL_Y + SCROLL_H / 2, 0),
-      new THREE.Vector3(0, 5.2, -0.1),
-      new THREE.Vector3(0.7, SCROLL_Y + SCROLL_H / 2, 0)
-    ]),
-    new THREE.LineBasicMaterial({ color: 0x3a2a20 })
-  );
-  g.add(shadows(rTop), shadows(rBot), cord);
+  for (const sy of [1, -1]) {
+    const r = new THREE.Mesh(rollerGeo, rollerMat);
+    r.position.set(X, SCROLL_Y + (sy * SCROLL_H) / 2, fz + 0.02);
+    r.castShadow = true;
+    g.add(r);
+  }
+  B.rod('solid', 0x3a2a20, X - 0.7, SCROLL_Y + SCROLL_H / 2, fz, X, Y + 4.85, fz - 0.1, 0.01, { seg: 3 });
+  B.rod('solid', 0x3a2a20, X + 0.7, SCROLL_Y + SCROLL_H / 2, fz, X, Y + 4.85, fz - 0.1, 0.01, { seg: 3 });
 
   // reading rule with a soft band of lamplight
   const rule = new THREE.Group();
-  const ruleBar = new THREE.Mesh(new THREE.BoxGeometry(SCROLL_W + 0.4, 0.06, 0.06), wood(0x9a6a45));
+  const ruleBar = new THREE.Mesh(new THREE.BoxGeometry(SCROLL_W + 0.4, 0.06, 0.06), patch(new THREE.MeshStandardMaterial({ color: 0x9a6a45, roughness: 0.6 }), 'rule'));
   const band = new THREE.Mesh(
     new THREE.PlaneGeometry(SCROLL_W, 0.34),
-    new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0, depthWrite: false })
+    patch(new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0, depthWrite: false }), 'band')
   );
   band.position.set(0, -0.18, -0.02);
   rule.add(ruleBar, band);
-  rule.position.set(0, SCROLL_Y + SCROLL_H / 2, 0.1);
+  rule.position.set(X, SCROLL_Y + SCROLL_H / 2, fz + 0.1);
   rule.visible = false;
   g.add(rule);
 
   // the seal and its stone stand
-  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 1.0, 8), stone(0xbfb19a));
-  stand.position.set(2.5, 0.7, 1.0);
-  g.add(shadows(stand));
+  B.cyl('solid', 0xbfb19a, 0.42, 1.0, X + 2.6, Y, fz + 1.3, { rTop: 0.36, seg: 8, kind: MAT.stone });
   const seal = new THREE.Group();
   const SEAL_SIZE = (SEAL_PX / SW) * SCROLL_W;
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(SEAL_SIZE, 0.6, SEAL_SIZE),
-    new THREE.MeshStandardMaterial({ color: 0xc7b79a, roughness: 0.55 }) // soapstone
-  );
+  const body = new THREE.Mesh(new THREE.BoxGeometry(SEAL_SIZE, 0.6, SEAL_SIZE), patch(new THREE.MeshStandardMaterial({ color: 0xc7b79a, roughness: 0.5 }), 'sealBody'));
   body.position.y = 0.3;
-  const face = new THREE.Mesh(
-    new THREE.BoxGeometry(SEAL_SIZE * 1.01, 0.04, SEAL_SIZE * 1.01),
-    new THREE.MeshStandardMaterial({ color: PALETTE.cinnabar, roughness: 0.8 })
-  );
+  const face = new THREE.Mesh(new THREE.BoxGeometry(SEAL_SIZE * 1.01, 0.04, SEAL_SIZE * 1.01), patch(new THREE.MeshStandardMaterial({ color: PAL.cinnabar, roughness: 0.8 }), 'sealFace'));
   face.position.y = 0.02;
-  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), new THREE.MeshStandardMaterial({ color: 0x6f8f7c, roughness: 0.3 }));
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), patch(new THREE.MeshStandardMaterial({ color: 0x6f8f7c, roughness: 0.3 }), 'sealKnob'));
   knob.position.y = 0.68;
   knob.scale.y = 0.8;
   seal.add(body, face, knob);
-  shadows(seal);
+  seal.traverse((o) => o.isMesh && (o.castShadow = true));
   g.add(seal);
-  const sealRest = new THREE.Vector3(2.5, 1.2, 1.0);
+  const sealRest = new THREE.Vector3(X + 2.6, Y + 1.0, fz + 1.3);
   const sealPrintY = SCROLL_Y + (0.5 - SEAL_CY / SH) * SCROLL_H;
-  const sealNear = new THREE.Vector3(0, sealPrintY, 0.9);
-  const sealContact = new THREE.Vector3(0, sealPrintY, 0.03);
+  const sealNear = new THREE.Vector3(X, sealPrintY, fz + 0.9);
+  const sealContact = new THREE.Vector3(X, sealPrintY, fz + 0.03);
   seal.position.copy(sealRest);
 
-  // evidence tags hanging from the beam, tinted once the claim is sealed
+  // evidence tags hanging from the beam
   const tagGeo = new THREE.PlaneGeometry(0.26, 0.4);
-  const tagPaper = new THREE.Color(PALETTE.paper);
+  const tagPaper = new THREE.Color(PAL.paper);
   const tagDone = new THREE.Color(0xc9dccf);
-  const tags = [-1.45, -1.25, 1.25, 1.45].map((x, i) => {
+  const tags = [-1.55, -1.3, 1.3, 1.55].map((x, i) => {
     const pivot = new THREE.Group();
-    pivot.position.set(x, 5.18, -0.05 + (i % 2) * 0.12);
-    const m = new THREE.Mesh(tagGeo, new THREE.MeshStandardMaterial({ color: PALETTE.paper, roughness: 0.95, side: THREE.DoubleSide }));
+    pivot.position.set(X + x, Y + 4.78, fz - 0.05 + (i % 2) * 0.12);
+    const mat = patch(new THREE.MeshStandardMaterial({ color: PAL.paper, roughness: 0.95, side: THREE.DoubleSide }), 'evidence');
+    const m = new THREE.Mesh(tagGeo, mat);
     m.position.y = -0.55 - (i % 2) * 0.35;
     const string = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, m.position.y + 0.2, 0)]),
-      new THREE.LineBasicMaterial({ color: PALETTE.cinnabar })
+      patch(new THREE.LineBasicMaterial({ color: PAL.cinnabar }), 'string')
     );
-    pivot.add(shadows(m), string);
+    pivot.add(m, string);
     pivot.userData.phase = i * 1.7;
     g.add(pivot);
-    return { pivot, mat: m.material };
+    return { pivot, mat };
   });
 
-  // examiners on stone benches
-  const benchMat = stone(0xbdb09a);
-  [-2.6, 2.4].forEach((x) => {
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 0.55), benchMat);
-    bench.position.set(x, 0.42, 2.4);
-    bench.rotation.y = x > 0 ? 0.45 : -0.45;
-    g.add(shadows(bench));
-    [-0.45, 0.45].forEach((dx, i) => {
-      const f = figure(i + (x > 0 ? 3 : 0));
-      f.position.set(x + dx * Math.cos(bench.rotation.y), 0.64, 2.4 - dx * Math.sin(bench.rotation.y));
-      f.rotation.y = Math.PI + bench.rotation.y;
-      g.add(f);
-    });
-  });
+  // examiners' desks with ledgers
+  for (const sx of [-1, 1]) {
+    table(B, X + sx * 4.4, Y, Z + 0.6, 0, 1.8, 0.8, 0.8, 0x6a4630);
+    bookPile(B, X + sx * 4.4 - 0.4, Y + 0.8, Z + 0.6, 4, rand);
+    crowd.place('stand', X + sx * 4.4, Y, Z - 0.3, 0, sx < 0 ? 0x3d4a5c : 0x6a3a3e, `exam${sx}`);
+  }
+  crowd.place('stand', X - 1.6, Y, Z + 2.4, 0.4, 0xe8e2d4);
+  crowd.place('stand', X + 1.7, Y, Z + 2.6, -0.5, 0x7a9a8a);
+  // lanterns at the eaves and along the square
+  for (const sx of [-1, 1]) hangingLantern(kit, B, X + sx * 2.6, Y + 3.7, Z + A.D / 2 + 0.85, 'red', Y + 4.6);
+
+  // ---- the public square: benches facing the hall, audience, notice boards
+  const sq0 = Z + A.D / 2 + 4.5;
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 4; c++) {
+      const bx = X - 7.2 + c * 4.8;
+      const bz = sq0 + r * 3.2;
+      bench(B, bx, 0, bz, 0, 3.2, 0x5a3e2a);
+      for (let k = 0; k < 3; k++) {
+        if (rand() < 0.38) continue;
+        crowd.place(rand() < 0.2 ? 'sitRead' : 'sit', bx - 1.0 + k * 1.0, 0, bz + 0.05, Math.PI, null);
+      }
+    }
+  for (let k = 0; k < 3; k++) noticeBoard(B, 52.2, 0, -16 + k * 6.2, -Math.PI / 2, 3.4, rand);
+  crowd.place('stand', 50.6, 0, -13.2, Math.PI / 2, null);
+  crowd.place('stand', 50.4, 0, -7, Math.PI / 2 + 0.3, null);
+  crowd.place('stand', 50.8, 0, -1.4, Math.PI / 2 - 0.2, null);
+  for (const [lx, lz] of [
+    [24, -18],
+    [47, -18],
+    [24, 1],
+    [47, 1]
+  ])
+    lanternPost(kit, B, lx, 0, lz);
 
   // state machine: idle → reading → stamping → sealed → idle
   let state = 'idle';
@@ -270,7 +271,6 @@ export function createVerify(def, ctx) {
   zone.update = (t, dt) => {
     zone.baseUpdate(dt);
     stateT += dt;
-
     if (state === 'reading') {
       const k = Math.min(1, stateT / READ);
       const y = SCROLL_Y + SCROLL_H / 2 - easeInOut(k) * (SCROLL_H - 0.2);
@@ -286,7 +286,6 @@ export function createVerify(def, ctx) {
       }
     } else if (state === 'stamping') {
       const k = stateT / STAMP;
-      // lift → approach → press → withdraw → return
       if (k < 0.35) {
         const u = easeInOut(k / 0.35);
         seal.position.lerpVectors(sealRest, sealNear, u);
@@ -297,7 +296,7 @@ export function createVerify(def, ctx) {
       } else if (k < 0.62) {
         if (!shown.sealed) {
           paint(4, true);
-          ctx.env.pulse(g.position.x, g.position.z, 9);
+          ctx.fx.pulse(X, Z + A.D / 2 + 6, 12);
         }
         seal.position.lerpVectors(sealContact, sealNear, easeInOut((k - 0.5) / 0.12));
       } else if (k < 1) {
@@ -320,8 +319,7 @@ export function createVerify(def, ctx) {
     } else {
       sealedMix = Math.max(0, sealedMix - dt * 0.8);
     }
-
-    scroll.rotation.y = Math.sin(t * 0.35) * 0.04;
+    scroll.rotation.y = Math.sin(t * 0.35) * 0.035;
     for (const tag of tags) {
       tag.pivot.rotation.z = Math.sin(t * 0.9 + tag.pivot.userData.phase) * 0.08;
       tag.pivot.rotation.x = Math.sin(t * 0.6 + tag.pivot.userData.phase) * 0.05;
@@ -329,6 +327,6 @@ export function createVerify(def, ctx) {
     }
   };
 
-  zone.cameraView = viewFor(zone, 9.5, 4.2, 0.3, 2.8);
+  zone.cameraView = view(X + 2.8, 4.1, Z + A.D / 2 + 9.5, X, Y + 2.6, fz);
   return zone;
 }

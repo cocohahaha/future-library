@@ -1,171 +1,158 @@
 import * as THREE from 'three';
-import { createZoneBase, viewFor, wood, stone, shadows, figure } from './common.js';
-import { rng } from '../scene/textures.js';
-import { PALETTE } from './data.js';
+import { createZoneBase, view } from './common.js';
+import { rng } from '../core/rng.js';
+import { patch } from '../core/materials.js';
+import { PAL } from '../core/config.js';
+import { bookcase, table, bench, ladder, openBook, bookPile, hangingLantern } from '../props/props.js';
 
-// Cedar bookcases in a gentle arc. Books are bound in plant-dyed cloth, and
-// red silk threads (红线) drape from book to book: every text tied visibly to
-// its sources. Activation sends paper tags travelling along the threads.
-
-const CLOTH = [0x8c4a32, 0x5c6a58, 0xb08a52, 0x3f4a52, 0xcbb994, 0x7a5c48, 0x9b7b3e, 0x4d3b30];
+// Provenance Stacks (溯源书库): the two-storey library hall. Inside, cedar
+// bookcases line the walls and stand in aisles, full of cloth-bound books,
+// thread-bound volumes in indigo wrappers and scrolls. Red silk threads
+// (红线) drape from book to book across the aisles: every text tied to its
+// sources. Activation warms the threads and sends paper tags racing along them.
 
 export function createProvenance(def, ctx) {
-  const zone = createZoneBase(def, { hitRadius: 6.5, hitHeight: 8.5, lightY: 4.5, lightIntensity: 7 });
+  const A = ctx.anchors.library;
+  const zone = createZoneBase(def, { hit: [A.W + 2, 15, A.D + 2], hitOffset: [0, 0, 0] });
   const g = zone.group;
+  const { B, crowd, kit } = ctx;
   const rand = rng(12);
-  const low = ctx.quality === 'low';
+  const X = A.x;
+  const Z = A.z;
+  const Y = A.floor;
+  const W = A.W;
+  const D = A.D;
+  const dens = ctx.tier.books;
+  zone.lamp = { x: X, y: Y + 3, z: Z + 1, intensity: 9, distance: 14 };
 
-  const towers = 5;
-  const shelves = 5;
-  const perShelf = low ? 9 : 13;
-  const towerW = 2.0;
-  const shelfGap = 1.12;
-  const towerH = 0.3 + shelves * shelfGap + 0.25;
+  const bookPos = []; // world positions of spines that threads can tie to
+  const shelf = (x, z, ry, w, h, opts = {}) => {
+    const before = kit.instancer.count('book');
+    bookcase(B, x, Y, z, ry, w, h, 0.42, opts.shelves || 6, rand, { density: dens * (opts.density || 1), scrolls: opts.scrolls, open: opts.open });
+    // remember a few spine positions on this case for threads
+    for (let k = 0; k < 6; k++) {
+      const lx = (rand() - 0.5) * (w - 0.4);
+      const ly = 0.5 + rand() * (h - 0.9);
+      const c = Math.cos(ry);
+      const s = Math.sin(ry);
+      bookPos.push({ p: new THREE.Vector3(x + lx * c + 0.24 * s, Y + ly, z - lx * s + 0.24 * c), case: `${x.toFixed(1)}:${z.toFixed(1)}:${ry.toFixed(2)}` });
+    }
+    return kit.instancer.count('book') - before;
+  };
 
-  // low stone dais
-  const dais = new THREE.Mesh(new THREE.BoxGeometry(13.5, 0.22, 4.4), stone(0xcdbfa8));
-  dais.position.set(0, 0.11, -1.0);
-  shadows(dais);
-  g.add(dais);
+  // back wall: two cases per bay (centre bay keeps a niche for a hanging scroll)
+  const backZ = Z - D / 2 + 0.38;
+  const xs = A.xs;
+  for (let i = 0; i < xs.length - 1; i++) {
+    const bw = xs[i + 1] - xs[i];
+    const cx = X + (xs[i] + xs[i + 1]) / 2;
+    if (i === 2) {
+      shelf(cx - bw / 2 + 0.95, backZ, 0, 1.5, 3.3, { scrolls: true });
+      shelf(cx + bw / 2 - 0.95, backZ, 0, 1.5, 3.3, { scrolls: true });
+    } else {
+      shelf(cx - bw / 4 + 0.05, backZ, 0, bw / 2 - 0.25, 3.3);
+      shelf(cx + bw / 4 - 0.05, backZ, 0, bw / 2 - 0.25, 3.3);
+    }
+  }
+  // side walls
+  for (const sx of [-1, 1])
+    for (let k = 0; k < 3; k++) shelf(X + sx * (W / 2 - 0.36), Z - 3.0 + k * 2.4, -sx * Math.PI / 2, 2.1, 3.3, { scrolls: k === 1 });
+  // freestanding double-sided cases in the side bays (aisles run front-back)
+  for (const bay of [0, 1, 3, 4]) {
+    const cx = X + (xs[bay] + xs[bay + 1]) / 2;
+    const bw = xs[bay + 1] - xs[bay];
+    for (const zz of [Z - 2.4, Z + 0.4]) {
+      shelf(cx, zz + 0.23, 0, bw - 0.9, 2.6, { shelves: 5, open: true });
+      shelf(cx, zz - 0.23, Math.PI, bw - 0.9, 2.6, { shelves: 5, open: true });
+    }
+  }
+  // centre bay: long reading table, benches, readers, ladders
+  table(B, X, Y, Z + 0.2, Math.PI / 2, 4.6, 1.1, 0.78);
+  for (const sx of [-1, 1]) bench(B, X + sx * 0.95, Y, Z + 0.2, Math.PI / 2, 4.4);
+  for (let k = 0; k < 4; k++) {
+    const z = Z - 1.6 + k * 1.2;
+    openBook(B, X + (k % 2 ? 0.25 : -0.25), Y + 0.79, z, Math.PI / 2 + (k % 2 ? Math.PI : 0));
+    if (k % 2) bookPile(B, X - 0.3, Y + 0.79, z + 0.4, 3 + Math.floor(rand() * 3), rand, Math.PI / 2);
+  }
+  crowd.place('sitRead', X - 0.95, Y, Z - 1.2, Math.PI / 2, 0x3d4a5c, 'libr1');
+  crowd.place('sitRead', X + 0.95, Y, Z + 0.6, -Math.PI / 2, 0xa8844a, 'libr2');
+  crowd.place('sit', X - 0.95, Y, Z + 1.5, Math.PI / 2, 0x7a9a8a, 'libr3');
+  ladder(B, X - 1.4, Y, backZ + 0.75, 0, 3.0);
+  ladder(B, X + 5.9, Y, backZ + 0.8, 0, 3.0);
+  // stewards and browsers
+  crowd.place('stand', X - 5.2, Y, Z + 2.6, Math.PI * 0.95, 0x6e5440, 'steward1');
+  crowd.place('stand', X + 4.6, Y, Z + 2.2, -Math.PI * 0.9, 0x9a3a2c, 'steward2');
+  crowd.place('stand', X + 7.6, Y, Z - 0.9, Math.PI, 0xd8ccb0);
+  crowd.place('stand', X - 7.7, Y, Z - 0.9, Math.PI, 0x5a6a7a);
+  crowd.place('stand', X + 5.9, Y + 1.1, backZ + 1.05, Math.PI, 0x4f5d4a); // on the ladder
+  // a reader on the balcony upstairs
+  crowd.place('stand', X - 3.5, A.eaveY + 1.55, Z + D / 2 + 0.55, 0.2, 0xe8e2d4);
+  // paper lanterns over the reading table and aisles
+  for (const [lx, lz] of [
+    [0, -1.2],
+    [0, 1.6],
+    [-5.4, -1],
+    [5.4, -1],
+    [-5.4, 2.2],
+    [5.4, 2.2]
+  ])
+    hangingLantern(kit, B, X + lx, Y + 3.0, Z + lz, 'paper', Y + 4.6);
+  // lanterns at the front eaves
+  for (const sx of [-1, 1]) hangingLantern(kit, B, X + sx * 4.2, Y + 3.5, Z + D / 2 + 0.9, 'red', Y + 4.5);
 
-  const cedar = wood(PALETTE.cedar);
-  const cedarDark = wood(0x5e3c28);
-  const bookMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
-  const books = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bookMat, towers * shelves * perShelf);
-  books.castShadow = true;
-  books.receiveShadow = true;
-  const bookPositions = [];
-
+  // ---- red threads between books on different cases
+  const threadMat = patch(
+    new THREE.MeshStandardMaterial({ color: PAL.cinnabar, roughness: 0.55, emissive: PAL.cinnabar, emissiveIntensity: 0.25 }),
+    'thread'
+  );
+  const curves = [];
+  const nThreads = ctx.tier.name === 'low' ? 10 : 16;
+  let guard = 0;
+  while (curves.length < nThreads && guard++ < 400) {
+    const a = bookPos[Math.floor(rand() * bookPos.length)];
+    const b = bookPos[Math.floor(rand() * bookPos.length)];
+    if (a.case === b.case) continue;
+    const d = a.p.distanceTo(b.p);
+    if (d < 2.2 || d > 7.5) continue;
+    const mid = a.p.clone().lerp(b.p, 0.5);
+    mid.y = Math.max(Y + 0.9, Math.min(a.p.y, b.p.y) - 0.4 - rand() * 0.5);
+    const c = new THREE.CatmullRomCurve3([a.p, a.p.clone().lerp(mid, 0.5).add(new THREE.Vector3(0, -0.15, 0)), mid, b.p.clone().lerp(mid, 0.5).add(new THREE.Vector3(0, -0.15, 0)), b.p]);
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(c, 40, 0.013, 5, false), threadMat);
+    g.add(mesh);
+    curves.push(c);
+  }
+  // paper tags travelling along the threads
+  const tagMat = patch(new THREE.MeshStandardMaterial({ color: PAL.paper, roughness: 0.9, side: THREE.DoubleSide }), 'tag');
+  const tags = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.12, 0.18), tagMat, curves.length * 2);
+  tags.frustumCulled = false;
+  g.add(tags);
+  const tagState = [];
+  curves.forEach((c, i) => {
+    for (let k = 0; k < 2; k++) tagState.push({ c, u: rand(), dir: (i + k) % 2 ? 1 : -1 });
+  });
+  const tmp = new THREE.Vector3();
+  const pos = new THREE.Vector3();
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  const pos = new THREE.Vector3();
-  const scl = new THREE.Vector3();
-  const col = new THREE.Color();
-  const zAxis = new THREE.Vector3(0, 0, 1);
-  let bi = 0;
-
-  const postGeo = new THREE.BoxGeometry(0.14, towerH, 0.6);
-  const boardGeo = new THREE.BoxGeometry(towerW, 0.06, 0.6);
-  const backGeo = new THREE.BoxGeometry(towerW, towerH, 0.06);
-  const capGeo = new THREE.BoxGeometry(towerW + 0.5, 0.12, 0.85);
-
-  for (let t = 0; t < towers; t++) {
-    const x = (t - (towers - 1) / 2) * 2.55;
-    const z = -(x * x) / 12 - 1.2; // gentle arc embracing the viewer
-    const tower = new THREE.Group();
-    tower.position.set(x, 0.22, z);
-    tower.rotation.y = -Math.atan2(x, 12) * 0.9;
-    g.add(tower);
-
-    const back = new THREE.Mesh(backGeo, cedarDark);
-    back.position.set(0, towerH / 2, -0.27);
-    const left = new THREE.Mesh(postGeo, cedar);
-    left.position.set(-towerW / 2 - 0.07, towerH / 2, 0);
-    const right = left.clone();
-    right.position.x = towerW / 2 + 0.07;
-    // a slightly flared cap, like a small eave
-    const cap = new THREE.Mesh(capGeo, cedarDark);
-    cap.position.y = towerH + 0.06;
-    tower.add(back, left, right, cap);
-    for (let s = 0; s <= shelves; s++) {
-      const b = new THREE.Mesh(boardGeo, cedar);
-      b.position.y = 0.25 + s * shelfGap;
-      tower.add(b);
-    }
-    shadows(tower);
-    tower.updateMatrix();
-    const towerMatrix = tower.matrix;
-
-    for (let s = 0; s < shelves; s++) {
-      const y = 0.28 + s * shelfGap;
-      let cx = -towerW / 2 + 0.06;
-      for (let b = 0; b < perShelf; b++) {
-        const w = 0.08 + rand() * 0.08;
-        const h = 0.6 + rand() * 0.32;
-        const lean = rand() < 0.1 ? (rand() - 0.5) * 0.35 : 0;
-        cx += w / 2;
-        if (cx > towerW / 2 - 0.06) break;
-        pos.set(cx, y + h / 2, rand() * 0.05);
-        q.setFromAxisAngle(zAxis, lean);
-        m.compose(pos, q, scl.set(w, h, 0.42 + rand() * 0.08));
-        m.premultiply(towerMatrix);
-        books.setMatrixAt(bi, m);
-        col.setHex(CLOTH[Math.floor(rand() * CLOTH.length)]).multiplyScalar(0.8 + rand() * 0.35);
-        books.setColorAt(bi, col);
-        bookPositions.push(new THREE.Vector3(cx, y + h * 0.7, 0.24).applyMatrix4(towerMatrix));
-        bi++;
-        cx += w / 2 + 0.012;
-      }
-    }
-  }
-  books.count = bi;
-  g.add(books);
-
-  // red threads: drooping silk between books on different cases
-  const threadCount = low ? 8 : 11;
-  const threadMat = new THREE.MeshStandardMaterial({
-    color: PALETTE.cinnabar,
-    roughness: 0.6,
-    emissive: PALETTE.cinnabar,
-    emissiveIntensity: 0.15
-  });
-  const curves = [];
-  const pick = () => bookPositions[Math.floor(rand() * bookPositions.length)];
-  for (let i = 0; i < threadCount; i++) {
-    const a = pick();
-    let b = pick();
-    let guard = 0;
-    // neighbouring cases only, so each thread reads as one clean swag
-    while ((Math.abs(a.x - b.x) < 2 || Math.abs(a.x - b.x) > 5.5) && guard++ < 40) b = pick();
-    const mid = a.clone().lerp(b, 0.5);
-    mid.y = Math.max(1.0, Math.min(a.y, b.y) - 0.35 - rand() * 0.5); // sag under its own weight
-    mid.z += 0.5 + rand() * 0.5;
-    const curve = new THREE.CatmullRomCurve3([a, a.clone().lerp(mid, 0.5).setZ(mid.z * 0.8 + a.z * 0.2), mid, b.clone().lerp(mid, 0.5).setZ(mid.z * 0.8 + b.z * 0.2), b]);
-    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, low ? 28 : 44, 0.014, 5, false), threadMat);
-    mesh.castShadow = true;
-    g.add(mesh);
-    curves.push(curve);
-  }
-
-  // paper tags that travel along the threads during an event
-  const tagGeo = new THREE.BoxGeometry(0.14, 0.2, 0.01);
-  const tagMat = new THREE.MeshStandardMaterial({ color: PALETTE.paper, roughness: 0.9 });
-  const tags = curves.map((c, i) => {
-    const tag = new THREE.Mesh(tagGeo, tagMat);
-    tag.userData = { curve: c, u: rand(), dir: i % 2 ? 1 : -1 };
-    tag.castShadow = true;
-    g.add(tag);
-    return tag;
-  });
-
-  // two stewards reading the threads
-  [-2.2, 3.1].forEach((x, i) => {
-    const f = figure(i + 2);
-    f.position.set(x, 0.22, 1.9 + i * 0.4);
-    f.scale.setScalar(1.15);
-    f.rotation.y = Math.PI + (i ? 0.3 : -0.2);
-    g.add(f);
-  });
-
-  const tmp = new THREE.Vector3();
-  zone.activate = () => zone.trigger();
+  const e = new THREE.Euler();
+  const one = new THREE.Vector3(1, 1, 1);
 
   zone.update = (t, dt) => {
     zone.baseUpdate(dt);
-    const e = zone.energy;
-    threadMat.emissiveIntensity = 0.12 + zone.focusMix * 0.12 + e * 0.9;
-    for (const tag of tags) {
-      const u = tag.userData;
-      // tags drift slowly at rest and race along when the lineage is lit
-      u.u = (u.u + dt * ctx.world.speed * (0.03 + e * 0.35) * u.dir + 1) % 1;
-      u.curve.getPointAt(u.u, tag.position);
-      u.curve.getPointAt(Math.min(0.999, u.u + 0.01), tmp);
-      tag.position.y -= 0.12;
-      tag.rotation.y = Math.atan2(tmp.x - tag.position.x, tmp.z - tag.position.z) + Math.PI / 2;
-      tag.rotation.z = Math.sin(t * 2 + u.u * 20) * 0.15;
-    }
+    const en = zone.energy;
+    threadMat.emissiveIntensity = 0.25 + zone.focusMix * 0.3 + en * 2.2;
+    tagState.forEach((s, i) => {
+      s.u = (s.u + dt * ctx.world.speed * (0.025 + en * 0.32) * s.dir + 1) % 1;
+      s.c.getPointAt(s.u, pos);
+      s.c.getPointAt(Math.min(0.999, s.u + 0.01), tmp);
+      pos.y -= 0.1;
+      e.set(0, Math.atan2(tmp.x - pos.x, tmp.z - pos.z) + Math.PI / 2, Math.sin(t * 2 + s.u * 20) * 0.15);
+      tags.setMatrixAt(i, m.compose(pos, q.setFromEuler(e), one));
+    });
+    tags.instanceMatrix.needsUpdate = true;
+    if (kit.mats.latticeLib) kit.mats.latticeLib.userData.paperGlow.value = 0.35 + zone.focusMix * 0.25 + en * 0.6;
   };
 
-  zone.cameraView = viewFor(zone, 12, 5.2, 0.35, 2.9);
+  zone.cameraView = view(X + 3.2, Y + 3.4, Z + D / 2 + 9.5, X - 0.4, Y + 2.4, Z - 0.5);
   return zone;
 }
