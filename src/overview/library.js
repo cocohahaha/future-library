@@ -31,6 +31,10 @@ export const FFL0 = 0.6;
 export const FFL1 = 4.2;
 const CLEAR = 3.2; // floor to slab soffit = the book's wall height
 const SILL = 1.1; // near walls are cut down to this in section
+// a section is drawn just under a level, never on it: a clipping plane that
+// lies exactly in a slab soffit or a wall top keeps or drops that face pixel
+// by pixel (float noise), a speckled veil over the room and its shadows
+const CUT = 0.02;
 const ROOF = 7.8; // top of the two-storey roofs
 const PAR0 = FFL0 + CLEAR + 0.4 + 0.5; // one-storey parapet top (4.7)
 const PAR1 = ROOF + 0.5; // two-storey parapet top (8.3)
@@ -404,7 +408,7 @@ export function buildLibrary({ tier }) {
 
   // ---- zones: one group each, a clipping plane per side and one for the rest
   const zones = {};
-  function zone(id, top, floor, center, build, { sides = true, to = floor + CLEAR } = {}) {
+  function zone(id, top, floor, center, build, { sides = true, to = floor + CLEAR - CUT } = {}) {
     const P = { main: new Part() };
     if (sides) for (const s of ['N', 'E', 'S', 'W']) P[s] = new Part();
     build(P);
@@ -415,7 +419,8 @@ export function buildLibrary({ tier }) {
     for (const [s, part] of Object.entries(P)) {
       const clip = new Plane(new Vector3(0, -1, 0), top + 1);
       emit(part, g, matSet(clip), `shell-${id}-${s}`);
-      cuts.push(s === 'main' ? { plane: clip, to } : { plane: clip, side: NRM[s], lo: floor + SILL, hi: floor + CLEAR, cur: floor + CLEAR });
+      const hi = floor + CLEAR - CUT;
+      cuts.push(s === 'main' ? { plane: clip, to } : { plane: clip, side: NRM[s], lo: floor + SILL - CUT, hi, cur: hi });
     }
     group.add(g);
     zones[id] = { group: g, top, floor, center, cuts };
