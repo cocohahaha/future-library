@@ -7,7 +7,7 @@ import { Vector3, MathUtils } from 'three';
 // visitor's hands. After a long idle it drifts slowly round the building.
 
 export function createOrbit({ dom, camera, isActive, onTap }) {
-  const home = { theta: 0.62, phi: 1.08, radius: 92, target: new Vector3(0, 3, 5) };
+  const home = { theta: 0.62, phi: 1.08, radius: 104, target: new Vector3(0, 3, -1) };
   const cur = { theta: home.theta, phi: home.phi, radius: home.radius, target: home.target.clone() };
   const goal = { theta: home.theta, phi: home.phi, radius: home.radius, target: home.target.clone() };
   const LIM = { phi0: 0.16, phi1: 1.42, r0: 5, r1: 260, pan: 40 };

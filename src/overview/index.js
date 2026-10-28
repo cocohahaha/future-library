@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera, SpotLight, HemisphereLight, Vector3, Matrix4, MathUtils } from 'three';
+import { Scene, PerspectiveCamera, SpotLight, HemisphereLight, Group, Vector3, Matrix4, MathUtils } from 'three';
 import { ATM, SUN_DIR, bakeEnvironment } from './atmos.js';
 import { buildLibrary } from './library.js';
 import { buildGround, PAPER } from './ground.js';
@@ -10,8 +10,9 @@ import { ZONE_ORDER } from '../i18n.js';
 // 图书馆全貌 / Library overview: the building of the book standing alone on
 // an unexplored map. The closer the camera comes to a part of it, the more
 // that part is cut open, down to a low section, and the book's own miniature
-// for that zone (src/diorama, at 1:1) stands inside, built the first time
-// the camera comes near. Loaded on demand (dynamic import from main.js), so
+// for that zone (src/diorama, at 1:1) stands inside as the corner of its
+// whole room (library.furnish), built the first time the camera comes near.
+// See ARCH_PLAN.md for the building. Loaded on demand (dynamic import from main.js), so
 // the book's first load never pays for it. Metres throughout. The book's
 // post pipeline renders it; main.js swaps the AO radius and bloom for this
 // scale.
@@ -19,10 +20,10 @@ import { ZONE_ORDER } from '../i18n.js';
 export const POST = { aoRadius: 0.8, aoPower: 1.2, bloom: 0.2, threshold: 1.3, exposure: 1.0, vignette: 0.2 };
 
 // a zone starts to open when the camera is CUT_FAR metres from its room and
-// is cut right down at CUT_NEAR; its room is built from BUILD metres away
-const CUT_FAR = 82;
-const CUT_NEAR = 30;
-const BUILD = 92;
+// is fully sectioned at CUT_NEAR; its room is built from BUILD metres away
+const CUT_FAR = 96;
+const CUT_NEAR = 58;
+const BUILD = 125;
 
 export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
   const hi = tier.name === 'high';
@@ -73,17 +74,25 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
   // ---- the rooms inside: the book's dioramas, built on approach
   const rooms = {};
   const reveal = {};
-  for (const id of ZONE_ORDER) reveal[id] = 0;
-  const roomAt = new Vector3();
+  for (const id of Object.keys(library.zones)) reveal[id] = 0;
+  // the book's miniature at the corner of its room, and the rest of the room
   function buildRoom(id) {
     const r = library.rooms[id];
     const d = buildDiorama(ZONE_ORDER.indexOf(id), { tier });
     d.group.position.set(r.x, r.y, r.z);
     d.group.rotation.y = r.ry;
-    d.group.name = `room-${id}`;
-    d.group.visible = false;
-    scene.add(d.group);
-    rooms[id] = d;
+    const ext = library.furnish(id, { tier });
+    const g = new Group();
+    g.name = `room-${id}`;
+    g.add(d.group, ext.group);
+    scene.add(g);
+    rooms[id] = {
+      group: g,
+      tick(t) {
+        d.tick(t);
+        ext.tick(t);
+      }
+    };
     sun.shadow.needsUpdate = true;
   }
 
@@ -105,6 +114,12 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     onTap: () => labels.open && labels.setOpen(null)
   });
 
+  // a whole-room framing, pulled back on narrow (portrait) screens so the
+  // room's width still fits
+  function fit(f) {
+    const k = MathUtils.clamp(0.65 / (Math.tan(MathUtils.degToRad(camera.fov / 2)) * camera.aspect), 1, 1.8);
+    return { ...f, radius: f.radius * k };
+  }
   // fly in close to a zone's room and open its card; null closes the card
   // and flies home
   function focusZone(id) {
@@ -113,7 +128,7 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
       orbit.setGoal(orbit.home, 1.9);
       return;
     }
-    orbit.setGoal(library.focus[id], 1.9);
+    orbit.setGoal(fit(library.focus[id]), 1.9);
   }
 
   // ?view=overview&zoom=far|mid|close[&zone=1..5] (screenshots, deep links)
@@ -121,10 +136,10 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     const q = new URLSearchParams(location.search);
     const z = q.get('zoom');
     if (z === 'far') return orbit.home;
-    if (z === 'mid') return { theta: 0.45, phi: 0.92, radius: 48, target: new Vector3(0, 2, 2) };
+    if (z === 'mid') return fit({ theta: -0.5, phi: 0.9, radius: 54, target: new Vector3(-1.5, 2, -2.5) });
     if (z === 'close') {
       const n = MathUtils.clamp(Math.round(Number(q.get('zone')) || 1), 1, ZONE_ORDER.length);
-      return library.focus[ZONE_ORDER[n - 1]];
+      return fit(library.focus[ZONE_ORDER[n - 1]]);
     }
     return null;
   }
@@ -156,31 +171,43 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     sun.target.updateMatrixWorld();
   }
 
-  // level of detail: the nearer a zone, the lower its section cut; its room
-  // appears once the cut is under way
+  // level of detail: the nearer a zone, the deeper its section: its slab
+  // and roof go, the walls between it and the camera drop to a sill and the
+  // far ones stop at the soffit (as the book's plates are cut). The spine is
+  // cut at L1 + 1.1 m and the canopy lifts off. Rooms are built nearest first.
   let snapCut = false; // a deep link: cut and build at once, no easing
   function cutAway(dt, clock) {
     let want = null;
     let wantD = Infinity;
-    for (const id of ZONE_ORDER) {
-      const r = library.rooms[id];
-      const z = library.zones[id];
-      roomAt.set(r.x, r.y + 1.5, r.z);
-      const d = camera.position.distanceTo(roomAt);
+    const ease = 1 - Math.exp(-dt * 5);
+    const turn = 1 - Math.exp(-dt * 3);
+    const cam = camera.position;
+    for (const [id, z] of Object.entries(library.zones)) {
+      const d = cam.distanceTo(z.center);
       const goal = 1 - MathUtils.smoothstep(d, CUT_NEAR, CUT_FAR);
-      reveal[id] += (goal - reveal[id]) * (1 - Math.exp(-dt * 5));
+      reveal[id] += (goal - reveal[id]) * ease;
       if (snapCut || Math.abs(goal - reveal[id]) < 1e-3) reveal[id] = goal;
-      if (snapCut && !rooms[id] && d < BUILD) buildRoom(id);
       const k = reveal[id];
       const e = k * k * (3 - 2 * k);
-      z.clip.constant = MathUtils.lerp(z.top + 1, z.floor + 0.9, e);
-      z.group.visible = z.clip.constant > z.floor + 0.05;
+      let shown = false;
+      for (const c of z.cuts) {
+        let to = c.to;
+        if (c.side) {
+          const near = c.side[0] * (cam.x - z.center.x) + c.side[1] * (cam.z - z.center.z) > 0;
+          const aim = near ? c.lo : c.hi;
+          c.cur = snapCut ? aim : c.cur + (aim - c.cur) * turn;
+          to = c.cur;
+        }
+        c.plane.constant = MathUtils.lerp(z.top + 1, to, e);
+        shown = shown || c.plane.constant > 0.05;
+      }
+      z.group.visible = shown;
+      if (!library.rooms[id]) continue;
       library.anchors[id].lerpVectors(library.shellAnchors[id], library.roomAnchors[id], e);
+      if (snapCut && !rooms[id] && d < BUILD) buildRoom(id);
       const room = rooms[id];
-      if (room) {
-        room.group.visible = k > 0.02;
-        if (room.group.visible) room.tick(clock);
-      } else if (d < BUILD && d < wantD) {
+      if (room) room.tick(clock);
+      else if (d < BUILD && d < wantD) {
         want = id;
         wantD = d;
       }
@@ -247,6 +274,7 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
       orbit.update(dt, now);
       camera.updateMatrixWorld();
       cutAway(dt, clock);
+      library.tick(clock);
       placeSun();
       if (!labelRoot.hidden) labels.update(camera, w, h);
     }
