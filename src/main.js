@@ -349,7 +349,8 @@ if (turn) {
   book.tau[u] = tv;
   book.relayout();
 }
-if (params.has('zoom')) {
+// (the overview's ?zoom=far|mid|close is read by the overview itself)
+if (params.has('zoom') && Number.isFinite(Number(params.get('zoom')))) {
   rig.state.zoomTarget = rig.state.zoom = Number(params.get('zoom'));
   zoomed = rig.state.zoom > 0.5;
   hud.setZoom(zoomed);

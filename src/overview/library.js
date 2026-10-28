@@ -9,25 +9,30 @@ import {
   Vector3,
   Color,
   AdditiveBlending,
-  DoubleSide
+  DoubleSide,
+  Plane
 } from 'three';
 import { Mesher, roundBox, box, cylinder, lathe, ringSector, tube, merge, xf, tint, plane } from '../core/geo.js';
 import { patch } from './atmos.js';
 
-// The Library of Open Questions as one civic building, in metres, entrance
-// to the south (+z). Each of the book's five zones is its own legible part:
-//   1 Question Well        a glass drum through the middle, its oculus
-//                          breathing paper slips up into the evening sky
+// The Library of Open Questions as one small civic building, in metres,
+// entrance to the south (+z), sized so that each of the book's five rooms
+// (src/diorama/scenes.js, 1:1) stands inside its own legible part:
+//   1 Question Well        a glass drum in the middle, its oculus breathing
+//                          paper slips up into the air
 //   2 Provenance Stacks    the west bar, wrapped in twisted terracotta fins
 //                          (the red thread, drawn as a facade)
 //   3 Dialogue Alcoves     the east wing: glazed pods stacked and cantilevered
 //                          off a glass core, planted on top
-//   4 Unassisted Room      a long, quiet, stone-clad bar floating over
-//                          everything, north-light sawtooth roof
-//   5 Verification Commons the glazed public ground floor and the
+//   4 Unassisted Room      a quiet, stone-clad bar raised on columns at the
+//                          back, north-light sawtooth roof
+//   5 Verification Commons the glazed public room at the front and the
 //                          undulating canopy over the forecourt
-// Static parts are merged per material; the slips are one instanced draw
-// animated in the vertex shader.
+// Each zone's shell is merged per material into its own group, whose
+// materials share one clipping plane: lowering it cuts the zone open like a
+// sectioned model (see index.js). The plinth, the raised floor and the
+// columns are never cut. The slips are one instanced draw animated in the
+// vertex shader.
 
 const FLOOR = 4.5;
 
@@ -223,185 +228,229 @@ function shrubs(list, x0, z0, x1, z1, y, n, rnd, size = 1) {
   }
 }
 
+// a hollow box: four walls t thick and an optional roof slab
+function hollow(add, k, x0, x1, z0, z1, y0, y1, t = 0.25, roof = null) {
+  const h = y1 - y0;
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  add(k, xf(box(x1 - x0, h, t), { t: [cx, y0 + h / 2, z1 - t / 2] }));
+  add(k, xf(box(x1 - x0, h, t), { t: [cx, y0 + h / 2, z0 + t / 2] }));
+  add(k, xf(box(t, h, z1 - z0 - 2 * t), { t: [x0 + t / 2, y0 + h / 2, cz] }));
+  add(k, xf(box(t, h, z1 - z0 - 2 * t), { t: [x1 - t / 2, y0 + h / 2, cz] }));
+  if (roof) add(roof, xf(box(x1 - x0 + 0.5, 0.45, z1 - z0 + 0.5), { t: [cx, y1 + 0.22, cz] }));
+}
+
+const BASE = 0.6; // top of the stone plinth
+
+// where each zone's room stands: the book's miniature at 1:1 (a 5.7 × 6.7 m
+// plinth, walls at its back (-z) and right (+x), open to the front and the
+// left); ry turns a room so that its open sides face out of the building
+export const ROOMS = {
+  well: { x: 0, y: BASE, z: 0, ry: 0 },
+  provenance: { x: -10.6, y: BASE, z: -0.4, ry: 0 },
+  dialogue: { x: 10.6, y: BASE, z: -0.4, ry: Math.PI / 2 },
+  quiet: { x: 0, y: 5.0, z: -11.8, ry: 0 },
+  verify: { x: 0, y: BASE, z: 11.6, ry: 0 }
+};
+
 export function buildLibrary({ tier }) {
-  const M = mats();
-  const P = { glass: [], stone: [], dark: [], fins: [], brass: [], green: [], canopy: [], glow: [], glowCool: [] };
-  const add = (k, g) => (P[k].push(g), g);
   let seed = 4041;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const hi = tier.name === 'high';
-
-  // ---- plinth and the south steps
-  add('stone', xf(box(132, 1.2, 70), { t: [0, 0.6, -2] }));
-  for (let i = 0; i < 5; i++) add('stone', xf(box(132, 1.2 - i * 0.24, 0.5), { t: [0, (1.2 - i * 0.24) / 2, 33.25 + i * 0.5] }));
-
-  // ---- 5 Verification Commons: glazed public floor + canopy over the forecourt
-  add('glass', xf(box(110, 8, 58), { t: [0, 1.2 + 4, -2] }));
-  for (let x = -54; x <= 54.01; x += 3) {
-    add('dark', xf(box(0.14, 8, 0.3), { t: [x, 5.2, 27.1] }));
-    add('dark', xf(box(0.14, 8, 0.3), { t: [x, 5.2, -31.1] }));
-  }
-  for (let z = -30; z <= 27.01; z += 3) {
-    add('dark', xf(box(0.3, 8, 0.14), { t: [-55.1, 5.2, z] }));
-    add('dark', xf(box(0.3, 8, 0.14), { t: [55.1, 5.2, z] }));
-  }
-  add('stone', xf(box(116, 1.3, 64), { t: [0, 9.85, -2] })); // first-floor slab
-  const canopyY = (x, z) => 13.2 + 1.7 * Math.sin(x * 0.072 + 0.5) * Math.cos((z - 46) * 0.14) + 0.6 * Math.sin(x * 0.17 + z * 0.09);
-  add('canopy', canopyGeo(0, 46, 64, 17, canopyY, 0.8, hi ? 80 : 48, hi ? 26 : 16));
-  // tree columns: a trunk splitting into four branches under the canopy
-  for (const [x, z] of [[-46, 40], [-26, 50], [-8, 38], [12, 50], [30, 39], [48, 49], [-40, 55], [38, 56]]) {
-    const yb = 6.5;
-    add('stone', xf(cylinder(0.45, yb, 12, { rTop: 0.35 }), { t: [x, 0, z] }));
-    for (let b = 0; b < 4; b++) {
-      const a = b * (Math.PI / 2) + 0.4;
-      const ex = x + Math.cos(a) * 3.4;
-      const ez = z + Math.sin(a) * 3.4;
-      add('stone', tube([new Vector3(x, yb - 0.2, z), new Vector3((x + ex) / 2, yb + 2.2, (z + ez) / 2), new Vector3(ex, canopyY(ex, ez) - 0.7, ez)], 0.2, 8));
-    }
-  }
-
-  // ---- 1 Question Well: glass drum, mullions, stone crown, glowing oculus
-  const WX = 0;
-  const WZ = 2;
-  const WR = 15;
-  const W0 = 10.5;
-  const W1 = 55;
-  add('glass', xf(cylinder(WR, W1 - W0, 64, { caps: false }), { t: [WX, W0, WZ] }));
-  for (let i = 0; i < 48; i++) {
-    const a = (i / 48) * Math.PI * 2;
-    add('dark', xf(box(0.18, W1 - W0, 0.4), { t: [WX + Math.sin(a) * (WR + 0.1), W0 + (W1 - W0) / 2, WZ + Math.cos(a) * (WR + 0.1)], r: [0, a, 0] }));
-  }
-  add('stone', xf(ringSector(WR - 1.2, WR + 0.9, 0, Math.PI * 2, 2.2, 64), { t: [WX, W1, WZ] }));
-  add('glowCool', xf(ringSector(WR - 1.6, WR - 1.15, 0, Math.PI * 2, 0.5, 64), { t: [WX, W1 + 2.0, WZ] }));
-  // shallow glass lantern on top of the oculus
-  const dome = [];
-  for (let i = 0; i <= 8; i++) {
-    const a = (i / 8) * (Math.PI / 2);
-    dome.push([Math.cos(a) * (WR - 1.6), Math.sin(a) * 3.2]);
-  }
-  add('glass', xf(lathe(dome, 64), { t: [WX, W1 + 2.2, WZ] }));
-
-  // ---- 2 Provenance Stacks: west bar inside a screen of twisted fins
-  const S = { x0: -57, x1: -19, z0: -28, z1: 24, y0: 10.5, y1: 38 };
-  add('dark', xf(box(S.x1 - S.x0, S.y1 - S.y0, S.z1 - S.z0), { t: [(S.x0 + S.x1) / 2, (S.y0 + S.y1) / 2, (S.z0 + S.z1) / 2] }));
-  // warm shelf light seen between the fins
-  for (let y = S.y0 + 1.6; y < S.y1 - 1; y += 3.4) {
-    add('glow', xf(box(S.x1 - S.x0 - 0.6, 0.35, 0.1), { t: [(S.x0 + S.x1) / 2, y, S.z1 + 0.06] }));
-    add('glow', xf(box(S.x1 - S.x0 - 0.6, 0.35, 0.1), { t: [(S.x0 + S.x1) / 2, y, S.z0 - 0.06] }));
-    add('glow', xf(box(0.1, 0.35, S.z1 - S.z0 - 0.6), { t: [S.x0 - 0.06, y, (S.z0 + S.z1) / 2] }));
-  }
-  const finH = S.y1 - S.y0 + 1.5;
-  const step = hi ? 1.1 : 1.6;
-  const runs = [
-    // [start x, start z, dir x, dir z, length, outward x, outward z]
-    [S.x0, S.z1 + 1.1, 1, 0, S.x1 - S.x0, 0, 1],
-    [S.x1, S.z0 - 1.1, -1, 0, S.x1 - S.x0, 0, -1],
-    [S.x0 - 1.1, S.z0, 0, 1, S.z1 - S.z0, -1, 0]
-  ];
-  let u = 0;
-  for (const [sx, sz, dx, dz, len] of runs) {
-    for (let s = step / 2; s < len; s += step) {
-      u += step;
-      const a0 = 0.95 * Math.sin(u * 0.085);
-      const a1 = 0.95 * Math.sin(u * 0.085 + 1.9);
-      const yaw = Math.atan2(dx, dz);
-      const depth = 1.0 + 0.45 * Math.sin(u * 0.05 + 1.0);
-      add('fins', xf(twistedFin(0.22, depth, finH, a0, a1, hi ? 10 : 6), { t: [sx + dx * s, S.y0 - 0.8, sz + dz * s], r: [0, yaw + Math.PI / 2, 0] }));
-    }
-  }
-  add('stone', xf(box(S.x1 - S.x0 + 3.4, 0.9, S.z1 - S.z0 + 3.4), { t: [(S.x0 + S.x1) / 2, S.y1 + 0.45, (S.z0 + S.z1) / 2] }));
-  // cantilevered planted terrace off the stacks' south face
-  add('stone', xf(box(26, 0.8, 9), { t: [-40, 24.4, S.z1 + 5.6] }));
-  add('glass', xf(box(26, 1.1, 0.12), { t: [-40, 25.35, S.z1 + 10] }));
-  shrubs(P.green, -52, S.z1 + 8.6, -28, S.z1 + 8.6, 24.8, hi ? 26 : 14, rnd);
-  // roof garden on the exposed strips of the stacks
-  shrubs(P.green, -55, S.z1 - 1, -21, S.z1 - 1, 38.9, hi ? 30 : 16, rnd, 1.2);
-  shrubs(P.green, -55, S.z0 + 1.5, -21, S.z0 + 1.5, 38.9, hi ? 24 : 12, rnd, 1.1);
-
-  // ---- 3 Dialogue Alcoves: glass core with stacked, cantilevered pods
-  add('glass', xf(box(14, 30.7, 40), { t: [27, 10.5 + 15.35, -1] }));
-  add('stone', xf(box(14.6, 0.8, 40.6), { t: [27, 41.6, -1] }));
-  const pods = [
-    [42, 13.6, -14, 0.1], [44, 13.6, 4, -0.08], [40, 13.6, 18, 0.12],
-    [48, 20.8, -6, -0.12], [45, 20.8, 13, 0.06],
-    [44, 28.0, -16, 0.14], [50, 28.0, 2, -0.05],
-    [46, 35.2, -4, 0.09], [42, 35.2, 15, -0.1]
-  ];
-  pods.forEach(([x, y, z, yaw], i) => {
-    const w = 13 + (i % 3) * 1.6;
-    const d = 9.5 + ((i * 7) % 3);
-    const t = { t: [x, y, z], r: [0, yaw, 0] };
-    add('brass', xf(roundBox(w + 0.6, 0.7, d + 0.6, 0.3, 2), { t: [x, y - 2.9, z], r: [0, yaw, 0] }));
-    add('glass', xf(roundBox(w, 5.4, d, 1.6, 3), t));
-    add('brass', xf(roundBox(w + 0.6, 0.7, d + 0.6, 0.3, 2), { t: [x, y + 2.9, z], r: [0, yaw, 0] }));
-    // planted top on pods that are not covered by the one above
-    const g = [];
-    shrubs(g, -w / 2 + 1.5, -d / 2 + 1.5, w / 2 - 1.5, d / 2 - 1.5, 0, hi ? 9 : 5, rnd, 0.9);
-    for (const s of g) P.green.push(xf(s, { t: [x, y + 3.25, z], r: [0, yaw, 0] }));
-  });
-
-  // ---- 4 Unassisted Room: a floating stone bar with a north-light roof
-  const Q = { x0: -50, x1: 66, z0: -14, z1: 12, y0: 41.6, y1: 50 };
-  add('stone', xf(box(Q.x1 - Q.x0, Q.y1 - Q.y0, Q.z1 - Q.z0), { t: [(Q.x0 + Q.x1) / 2, (Q.y0 + Q.y1) / 2, (Q.z0 + Q.z1) / 2] }));
-  // one long slit window to the south, warm behind
-  add('glow', xf(box(Q.x1 - Q.x0 - 10, 1.1, 0.12), { t: [(Q.x0 + Q.x1) / 2 + 2, Q.y0 + 4.2, Q.z1 + 0.04] }));
-  add('dark', xf(box(Q.x1 - Q.x0 - 9.6, 0.18, 0.5), { t: [(Q.x0 + Q.x1) / 2 + 2, Q.y0 + 3.55, Q.z1 + 0.2] }));
-  // sawtooth roof: teeth along the bar, each a slope rising east to a
-  // glazed upstand, so the skyline of the quiet room reads as a saw blade
-  const teeth = 10;
-  const tw = (Q.x1 - Q.x0) / teeth;
-  const hgt = 3.4;
-  const zN = Q.z0 + 0.8;
-  const zS = Q.z1 - 0.8;
-  for (let i = 0; i < teeth; i++) {
-    const xa = Q.x0 + tw * i + 0.25;
-    const xb = Q.x0 + tw * (i + 1) - 0.25;
-    const L = xb - xa;
-    const sl = Math.hypot(L, hgt);
-    const sm = new Mesher();
-    const nx = -hgt / sl;
-    const ny = L / sl;
-    const a = sm.v(xa, 0, zS, nx, ny, 0, 0, 0);
-    const b = sm.v(xb, hgt, zS, nx, ny, 0, L, 0);
-    const c = sm.v(xb, hgt, zN, nx, ny, 0, L, zS - zN);
-    const d = sm.v(xa, 0, zN, nx, ny, 0, 0, zS - zN);
-    sm.quad(a, b, c, d);
-    // gable triangles, south (+z) and north (-z)
-    const e = sm.v(xa, 0, zS, 0, 0, 1, 0, 0);
-    const f = sm.v(xb, 0, zS, 0, 0, 1, L, 0);
-    const g = sm.v(xb, hgt, zS, 0, 0, 1, L, hgt);
-    sm.tri(e, f, g);
-    const h = sm.v(xa, 0, zN, 0, 0, -1, 0, 0);
-    const k = sm.v(xb, 0, zN, 0, 0, -1, L, 0);
-    const l = sm.v(xb, hgt, zN, 0, 0, -1, L, hgt);
-    sm.tri(h, l, k);
-    add('stone', xf(sm.build(), { t: [0, Q.y1, 0] }));
-    add('glass', xf(box(0.16, hgt, zS - zN), { t: [xb + 0.08, Q.y1 + hgt / 2, (zN + zS) / 2] }));
-  }
-  // timber-dark soffit under the cantilever, a planted roof edge at the east end
-  add('dark', xf(box(18, 0.3, Q.z1 - Q.z0 - 1), { t: [Q.x1 - 9, Q.y0 - 0.15, (Q.z0 + Q.z1) / 2] }));
-  shrubs(P.green, Q.x0 + 2, Q.z1 - 0.6, Q.x1 - 2, Q.z1 - 0.6, Q.y1, hi ? 30 : 16, rnd, 0.7);
-
-  // ---- merge per material
+  const lists = () => ({ glass: [], stone: [], dark: [], fins: [], brass: [], green: [], canopy: [], glow: [], glowCool: [] });
   const group = new Group();
   group.name = 'library';
-  for (const [k, list] of Object.entries(P)) {
-    if (!list.length) continue;
-    const mesh = new Mesh(merge(list), M[k]);
-    mesh.castShadow = k !== 'glow' && k !== 'glowCool';
-    mesh.receiveShadow = k !== 'glow' && k !== 'glowCool';
-    mesh.name = `library-${k}`;
-    group.add(mesh);
+  function emit(P, M, parent, name) {
+    for (const [k, list] of Object.entries(P)) {
+      if (!list.length) continue;
+      const mesh = new Mesh(merge(list), M[k]);
+      const lit = k !== 'glow' && k !== 'glowCool';
+      mesh.castShadow = lit;
+      mesh.receiveShadow = lit;
+      mesh.name = `${name}-${k}`;
+      parent.add(mesh);
+    }
   }
 
+  // ---- never cut: plinth, forecourt steps, the quiet room's raised floor
+  const base = lists();
+  {
+    const add = (k, g) => base[k].push(g);
+    add('stone', xf(box(34, BASE, 46), { t: [0, BASE / 2, 5] }));
+    for (let i = 0; i < 3; i++) add('stone', xf(box(30, BASE - (i + 1) * 0.15, 0.45), { t: [0, (BASE - (i + 1) * 0.15) / 2, 28.2 + i * 0.45] }));
+    add('stone', xf(box(25, 0.4, 8.6), { t: [0, 4.8, -11.8] }));
+    for (const x of [-11, -5.5, 5.5, 11]) for (const z of [-15, -8.6]) add('stone', xf(cylinder(0.26, 4.2, 12), { t: [x, BASE, z] }));
+    // planters along the forecourt
+    shrubs(base.green, -15.5, 18, -15.5, 27, BASE, hi ? 10 : 6, rnd, 0.5);
+    shrubs(base.green, 15.5, 18, 15.5, 27, BASE, hi ? 10 : 6, rnd, 0.5);
+    shrubs(base.green, -15.5, -16, -15.5, 6, BASE, hi ? 12 : 7, rnd, 0.45);
+    shrubs(base.green, 15.5, -16, 15.5, 6, BASE, hi ? 12 : 7, rnd, 0.45);
+  }
+  const baseMats = mats();
+  emit(base, baseMats, group, 'library-base');
+
+  // ---- the five shells
+  const zones = {};
+  function zone(id, top, build) {
+    const P = lists();
+    const add = (k, g) => (P[k].push(g), g);
+    build(add, P);
+    const M = mats();
+    const clip = new Plane(new Vector3(0, -1, 0), top + 1);
+    for (const m of Object.values(M)) {
+      m.clippingPlanes = [clip];
+      m.clipShadows = true;
+      m.side = DoubleSide;
+    }
+    const g = new Group();
+    g.name = `shell-${id}`;
+    emit(P, M, g, `shell-${id}`);
+    group.add(g);
+    zones[id] = { group: g, clip, top, floor: ROOMS[id].y, materials: M };
+  }
+
+  // 1 Question Well: glass drum, mullions, stone crown, glowing oculus
+  const WR = 4.9;
+  const W1 = 10.8;
+  zone('well', W1 + 2.4, (add) => {
+    add('glass', xf(cylinder(WR, W1 - BASE, 48, { caps: false }), { t: [0, BASE, 0] }));
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      add('dark', xf(box(0.1, W1 - BASE, 0.22), { t: [Math.sin(a) * (WR + 0.06), (BASE + W1) / 2, Math.cos(a) * (WR + 0.06)], r: [0, a, 0] }));
+    }
+    add('stone', xf(ringSector(WR - 0.05, WR + 0.3, 0, Math.PI * 2, 0.3, 48), { t: [0, BASE, 0] }));
+    add('stone', xf(ringSector(WR - 0.7, WR + 0.45, 0, Math.PI * 2, 0.9, 48), { t: [0, W1, 0] }));
+    add('glowCool', xf(ringSector(WR - 0.95, WR - 0.7, 0, Math.PI * 2, 0.22, 48), { t: [0, W1 + 0.95, 0] }));
+    const dome = [];
+    for (let i = 0; i <= 8; i++) {
+      const a = (i / 8) * (Math.PI / 2);
+      dome.push([Math.cos(a) * (WR - 0.95), Math.sin(a) * 1.3]);
+    }
+    add('glass', xf(lathe(dome, 48), { t: [0, W1 + 0.9, 0] }));
+  });
+
+  // 2 Provenance Stacks: west bar inside a screen of twisted fins
+  const S = { x0: -14.6, x1: -6.6, z0: -5.4, z1: 4.6, y1: 8.4 };
+  zone('provenance', S.y1 + 1, (add) => {
+    hollow(add, 'dark', S.x0, S.x1, S.z0, S.z1, BASE, S.y1, 0.25, 'stone');
+    for (let y = BASE + 1.0; y < S.y1 - 0.5; y += 1.25) {
+      add('glow', xf(box(S.x1 - S.x0 - 0.4, 0.14, 0.05), { t: [(S.x0 + S.x1) / 2, y, S.z1 + 0.03] }));
+      add('glow', xf(box(S.x1 - S.x0 - 0.4, 0.14, 0.05), { t: [(S.x0 + S.x1) / 2, y, S.z0 - 0.03] }));
+      add('glow', xf(box(0.05, 0.14, S.z1 - S.z0 - 0.4), { t: [S.x0 - 0.03, y, (S.z0 + S.z1) / 2] }));
+    }
+    const finH = S.y1 - BASE + 0.5;
+    const step = hi ? 0.5 : 0.7;
+    const runs = [
+      [S.x0, S.z1 + 0.45, 1, 0, S.x1 - S.x0],
+      [S.x1, S.z0 - 0.45, -1, 0, S.x1 - S.x0],
+      [S.x0 - 0.45, S.z0, 0, 1, S.z1 - S.z0]
+    ];
+    let u = 0;
+    for (const [sx, sz, dx, dz, len] of runs) {
+      for (let s = step / 2; s < len; s += step) {
+        u += step * 2.2;
+        const a0 = 0.95 * Math.sin(u * 0.085);
+        const a1 = 0.95 * Math.sin(u * 0.085 + 1.9);
+        const depth = 0.42 + 0.18 * Math.sin(u * 0.05 + 1.0);
+        add('fins', xf(twistedFin(0.1, depth, finH, a0, a1, hi ? 10 : 6), { t: [sx + dx * s, BASE, sz + dz * s], r: [0, Math.atan2(dx, dz) + Math.PI / 2, 0] }));
+      }
+    }
+  });
+  // 3 Dialogue Alcoves: a glazed ground pod, two cantilevered pods above
+  zone('dialogue', BASE + 13, (add, P) => {
+    const x0 = 6.8;
+    const x1 = 14.4;
+    const z0 = -4.1;
+    const z1 = 3.3;
+    const y1 = BASE + 4.0;
+    hollow(add, 'glass', x0, x1, z0, z1, BASE, y1, 0.1);
+    for (let x = x0; x <= x1 + 0.01; x += 1.9) add('dark', xf(box(0.08, y1 - BASE, 0.14), { t: [x, (BASE + y1) / 2, z1] }));
+    for (let z = z0; z <= z1 + 0.01; z += 1.85) add('dark', xf(box(0.14, y1 - BASE, 0.08), { t: [x1, (BASE + y1) / 2, z] }));
+    add('brass', xf(roundBox(x1 - x0 + 0.4, 0.4, z1 - z0 + 0.4, 0.15, 2), { t: [(x0 + x1) / 2, y1 + 0.2, (z0 + z1) / 2] }));
+    // glass core rising behind
+    add('glass', xf(box(1.6, 8.6, 5.2), { t: [7.7, y1 + 0.4 + 4.3, -0.6] }));
+    const pods = [
+      [11.6, y1 + 2.4, -1.6, 0.12, 6.8, 3.2, 5.8],
+      [10.4, y1 + 6.2, 0.9, -0.1, 6.0, 3.0, 5.4]
+    ];
+    for (const [x, y, z, yaw, w, h, d] of pods) {
+      add('brass', xf(roundBox(w + 0.3, 0.3, d + 0.3, 0.12, 2), { t: [x, y - h / 2 - 0.15, z], r: [0, yaw, 0] }));
+      add('glass', xf(roundBox(w, h, d, 0.8, 3), { t: [x, y, z], r: [0, yaw, 0] }));
+      add('brass', xf(roundBox(w + 0.3, 0.3, d + 0.3, 0.12, 2), { t: [x, y + h / 2 + 0.15, z], r: [0, yaw, 0] }));
+      const g = [];
+      shrubs(g, -w / 2 + 0.8, -d / 2 + 0.8, w / 2 - 0.8, d / 2 - 0.8, 0, hi ? 7 : 4, rnd, 0.4);
+      for (const s of g) P.green.push(xf(s, { t: [x, y + h / 2 + 0.3, z], r: [0, yaw, 0] }));
+    }
+  });
+
+  // 4 Unassisted Room: a stone bar on columns, north-light sawtooth roof
+  const Q = { x0: -12, x1: 12, z0: -15.8, z1: -7.8, y0: 5.0, y1: 8.6 };
+  zone('quiet', Q.y1 + 2, (add) => {
+    hollow(add, 'stone', Q.x0, Q.x1, Q.z0, Q.z1, Q.y0, Q.y1, 0.3);
+    add('glow', xf(box(Q.x1 - Q.x0 - 4, 0.45, 0.05), { t: [0, Q.y0 + 2.2, Q.z1 + 0.03] }));
+    add('dark', xf(box(Q.x1 - Q.x0 - 3.8, 0.1, 0.25), { t: [0, Q.y0 + 1.95, Q.z1 + 0.12] }));
+    const teeth = 6;
+    const tw = (Q.x1 - Q.x0) / teeth;
+    const hgt = 1.4;
+    const zN = Q.z0;
+    const zS = Q.z1;
+    for (let i = 0; i < teeth; i++) {
+      const xa = Q.x0 + tw * i;
+      const xb = Q.x0 + tw * (i + 1) - 0.1;
+      const L = xb - xa;
+      const sl = Math.hypot(L, hgt);
+      const sm = new Mesher();
+      const nx = -hgt / sl;
+      const ny = L / sl;
+      const a = sm.v(xa, 0, zS, nx, ny, 0, 0, 0);
+      const b = sm.v(xb, hgt, zS, nx, ny, 0, L, 0);
+      const c = sm.v(xb, hgt, zN, nx, ny, 0, L, zS - zN);
+      const d = sm.v(xa, 0, zN, nx, ny, 0, 0, zS - zN);
+      sm.quad(a, b, c, d);
+      const e = sm.v(xa, 0, zS, 0, 0, 1, 0, 0);
+      const f = sm.v(xb, 0, zS, 0, 0, 1, L, 0);
+      const g = sm.v(xb, hgt, zS, 0, 0, 1, L, hgt);
+      sm.tri(e, f, g);
+      const h = sm.v(xa, 0, zN, 0, 0, -1, 0, 0);
+      const k = sm.v(xb, 0, zN, 0, 0, -1, L, 0);
+      const l = sm.v(xb, hgt, zN, 0, 0, -1, L, hgt);
+      sm.tri(h, l, k);
+      add('stone', xf(sm.build(), { t: [0, Q.y1, 0] }));
+      add('glass', xf(box(0.1, hgt, zS - zN), { t: [xb + 0.05, Q.y1 + hgt / 2, (zN + zS) / 2] }));
+    }
+  });
+
+  // 5 Verification Commons: the glazed public room and the forecourt canopy
+  const V = { x0: -8, x1: 8, z0: 7.4, z1: 16.2, y1: BASE + 4.0 };
+  const canopyY = (x, z) => 5.6 + 0.45 * Math.sin(x * 0.3 + 0.5) * Math.cos((z - 21.6) * 0.5) + 0.2 * Math.sin(x * 0.7 + z * 0.4);
+  zone('verify', 7.2, (add) => {
+    hollow(add, 'glass', V.x0, V.x1, V.z0, V.z1, BASE, V.y1, 0.1, 'stone');
+    for (let x = V.x0; x <= V.x1 + 0.01; x += 1.6) add('dark', xf(box(0.08, V.y1 - BASE, 0.14), { t: [x, (BASE + V.y1) / 2, V.z1] }));
+    for (let z = V.z0; z <= V.z1 + 0.01; z += 1.76) {
+      add('dark', xf(box(0.14, V.y1 - BASE, 0.08), { t: [V.x0, (BASE + V.y1) / 2, z] }));
+      add('dark', xf(box(0.14, V.y1 - BASE, 0.08), { t: [V.x1, (BASE + V.y1) / 2, z] }));
+    }
+    add('canopy', canopyGeo(0, 21.8, 13, 5.4, canopyY, 0.3, hi ? 64 : 40, hi ? 20 : 14));
+    for (const [x, z] of [[-9, 19.5], [-3, 24], [3.5, 19.6], [9.5, 23.8]]) {
+      const yb = 3.0;
+      add('stone', xf(cylinder(0.16, yb - BASE, 10, { rTop: 0.12 }), { t: [x, BASE, z] }));
+      for (let b = 0; b < 4; b++) {
+        const a = b * (Math.PI / 2) + 0.4;
+        const ex = x + Math.cos(a) * 1.4;
+        const ez = z + Math.sin(a) * 1.4;
+        add('stone', tube([new Vector3(x, yb - 0.1, z), new Vector3((x + ex) / 2, yb + 0.9, (z + ez) / 2), new Vector3(ex, canopyY(ex, ez) - 0.3, ez)], 0.07, 6));
+      }
+    }
+  });
+
   // ---- question slips rising out of the oculus (one instanced draw)
-  const NS = hi ? 140 : 70;
-  const slipGeo = plane(0.7, 0.95);
+  const NS = hi ? 90 : 50;
+  const slipGeo = plane(0.3, 0.4);
   xf(slipGeo, { r: [Math.PI / 2, 0, 0] }); // stand the quad up (facing +z)
   const seeds = new Float32Array(NS * 4);
   for (let i = 0; i < NS; i++) {
     seeds[i * 4] = rnd() * Math.PI * 2;
-    seeds[i * 4 + 1] = rnd() * (WR - 3);
+    seeds[i * 4 + 1] = rnd() * (WR - 1.2);
     seeds[i * 4 + 2] = rnd();
     seeds[i * 4 + 3] = 0.7 + rnd() * 0.6;
   }
@@ -410,7 +459,7 @@ export function buildLibrary({ tier }) {
     {
       key: 'lib-slips',
       additive: true,
-      uniforms: { uOrigin: { value: new Vector3(WX, W1 + 1, WZ) } },
+      uniforms: { uOrigin: { value: new Vector3(0, W1 + 0.6, 0) } },
       vHead: /* glsl */ `
         attribute vec4 aSeed;
         uniform vec3 uOrigin;
@@ -418,11 +467,11 @@ export function buildLibrary({ tier }) {
       `,
       vBegin: /* glsl */ `
         {
-          float life = fract( aSeed.z + uTime * 0.018 * aSeed.w );
-          float h = life * 70.0;
+          float life = fract( aSeed.z + uTime * 0.03 * aSeed.w );
+          float h = life * 22.0;
           float a = aSeed.x + life * 2.2;
-          float r = aSeed.y * ( 1.0 + life * 1.6 );
-          vec3 c = uOrigin + vec3( sin( a ) * r + life * life * 26.0, h, cos( a ) * r + life * life * 9.0 );
+          float r = aSeed.y * ( 1.0 + life * 1.2 );
+          vec3 c = uOrigin + vec3( sin( a ) * r + life * life * 7.0, h, cos( a ) * r + life * life * 2.5 );
           float spin = uTime * ( 0.6 + aSeed.w ) + aSeed.x * 3.0;
           float cs = cos( spin ), sn = sin( spin );
           vec3 p = transformed;
@@ -445,21 +494,23 @@ export function buildLibrary({ tier }) {
   slips.renderOrder = 2;
   group.add(slips);
 
-  // label anchors and camera framings per zone (zone order: well, provenance,
-  // dialogue, quiet, verify)
-  const anchors = {
-    well: new Vector3(WX, W1 + 6, WZ),
-    provenance: new Vector3(S.x0 - 2, 30, S.z1 - 6),
-    dialogue: new Vector3(52, 38.5, 8),
-    quiet: new Vector3(30, Q.y1 + 4.5, -2),
-    verify: new Vector3(4, 15.8, 54)
+  // label anchors: over each shell from afar, over its room once cut open
+  // (index.js blends them); camera framings: in close, looking into the
+  // room's open front from a little to its left
+  const shellAnchors = {
+    well: new Vector3(0, W1 + 2.6, 0),
+    provenance: new Vector3(S.x0 - 0.4, S.y1 - 1.5, S.z1 - 1.5),
+    dialogue: new Vector3(13.6, BASE + 11.8, 1.4),
+    quiet: new Vector3(6, Q.y1 + 1.8, Q.z1 - 1),
+    verify: new Vector3(2, 6.4, 22.5)
   };
-  const focus = {
-    well: { target: new Vector3(WX, 34, WZ), radius: 120, phi: 0.95 },
-    provenance: { target: new Vector3(-40, 24, 0), radius: 120, theta: -0.55, phi: 1.2 },
-    dialogue: { target: new Vector3(42, 26, 0), radius: 115, theta: 1.35, phi: 1.2 },
-    quiet: { target: new Vector3(10, 45, 0), radius: 135, phi: 1.05 },
-    verify: { target: new Vector3(0, 8, 40), radius: 105, theta: 0.25, phi: 1.22 }
-  };
-  return { group, anchors, focus, materials: M, footprint: { x0: -66, x1: 66, z0: -37, z1: 62 } };
+  const anchors = {};
+  const roomAnchors = {};
+  const focus = {};
+  for (const [id, r] of Object.entries(ROOMS)) {
+    anchors[id] = shellAnchors[id].clone();
+    roomAnchors[id] = new Vector3(r.x, r.y + 3.9, r.z);
+    focus[id] = { target: new Vector3(r.x, r.y + 1.2, r.z), radius: 11.5, phi: 1.0, theta: r.ry - 0.45 };
+  }
+  return { group, zones, anchors, shellAnchors, roomAnchors, focus, rooms: ROOMS, materials: baseMats, footprint: { x0: -17, x1: 17, z0: -18, z1: 29 } };
 }

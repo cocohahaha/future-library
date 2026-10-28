@@ -47,7 +47,8 @@ export const FOG_GLSL = /* glsl */ `
 // Patch a stock material: aerial-perspective fog plus optional extra GLSL.
 // opts: { key, additive, uniforms, vHead, vNormal (after beginnormal), vBegin (after
 // begin_vertex), vEnd, fHead, fColor (after color_fragment), fRough (after
-// metalnessmap_fragment), fEmissive (after emissivemap_fragment) }
+// metalnessmap_fragment), fEmissive (after emissivemap_fragment), fEnd (after
+// the fog) }
 export function patch(mat, opts = {}) {
   const key = opts.key || 'base';
   mat.onBeforeCompile = (sh) => {
@@ -74,7 +75,7 @@ export function patch(mat, opts = {}) {
     if (opts.fRough) f = f.replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${opts.fRough}`);
     if (opts.fEmissive) f = f.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${opts.fEmissive}`);
     // additive glows fade out with distance instead of turning into haze
-    f = f.replace('#include <fog_fragment>', opts.additive ? 'gl_FragColor.rgb *= 1.0 - atmFogF( vAtmW );' : 'gl_FragColor.rgb = atmFog( gl_FragColor.rgb, vAtmW );');
+    f = f.replace('#include <fog_fragment>', (opts.additive ? 'gl_FragColor.rgb *= 1.0 - atmFogF( vAtmW );' : 'gl_FragColor.rgb = atmFog( gl_FragColor.rgb, vAtmW );') + `\n${opts.fEnd || ''}`);
     sh.vertexShader = v;
     sh.fragmentShader = f;
   };
