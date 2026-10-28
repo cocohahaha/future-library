@@ -1,4 +1,31 @@
-html, body { margin: 0; height: 100%; overflow: hidden; background: #b4aa9a; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #b4aa9a; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', Georgia, serif; color: #2a2622; }
 #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; outline: none; }
-.loader { position: fixed; inset: 0; display: grid; place-items: center; background: #efe7d8; transition: opacity .6s; }
+.loader { position: fixed; inset: 0; display: grid; place-items: center; background: #efe7d8; transition: opacity .6s; z-index: 5; }
 .loader.is-done { opacity: 0; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* top bar: running title left, language right; never wider than the gap between them */
+.hud-top { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left)); pointer-events: none; z-index: 2; }
+.brand { margin: 0; display: flex; flex-direction: column; gap: 3px; min-width: 0; transition: opacity .6s; opacity: .92; }
+.brand-title { font-size: 15px; letter-spacing: .14em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-sub { font: 500 10.5px/1.2 system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', sans-serif; letter-spacing: .18em; text-transform: uppercase; opacity: .62; }
+html[lang='en'] .brand-title { letter-spacing: .04em; font-style: italic; font-weight: 500; }
+body.is-closed .brand { opacity: 0; }
+.chip, .capsule button { pointer-events: auto; font: 500 13px/1 system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', sans-serif; color: #2a2622; border: 0; cursor: pointer; }
+.chip { padding: 8px 13px; border-radius: 999px; background: rgba(250, 246, 238, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 1px 6px rgba(40, 30, 20, .12); letter-spacing: .06em; }
+
+/* bottom capsule */
+.capsule { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+  padding: 4px; border-radius: 999px; background: rgba(250, 246, 238, .78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 2px 14px rgba(40, 30, 20, .16); z-index: 2; max-width: calc(100vw - 24px); }
+.capsule button { background: transparent; border-radius: 999px; height: 36px; white-space: nowrap; flex: none; }
+.capsule button:hover:not(:disabled) { background: rgba(42, 38, 34, .07); }
+.capsule button:disabled { opacity: .28; cursor: default; }
+.cap-btn { width: 38px; font-size: 22px !important; line-height: 1 !important; padding-bottom: 3px; }
+.cap-where { padding: 0 14px; min-width: 9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .05em; }
+.cap-where.is-cta { background: #a4502f !important; color: #fbf3e6 !important; }
+.cap-zoom { padding: 0 12px; color: #6d665c !important; border-left: 1px solid rgba(42, 38, 34, .12) !important; border-radius: 0 !important; }
+:focus-visible { outline: 2px solid #a4502f; outline-offset: 2px; }
+@media (max-width: 520px) { .brand-sub { display: none; } .brand-title { font-size: 13px; } .cap-where { min-width: 0; max-width: 44vw; padding: 0 10px; flex: 0 1 auto !important; } .cap-zoom { padding: 0 9px; } }

@@ -8,12 +8,13 @@ const threeSrc = fileURLToPath(new URL('./node_modules/three/src/Three.js', impo
 
 // three's own build strips comments and blank lines from its GLSL chunks;
 // importing the sources skips that step, so do the same here (and drop
-// indentation, which GLSL ignores).
+// indentation, which GLSL ignores). Our own /* glsl */ strings get the same.
 function trimThreeGlsl() {
   return {
     name: 'trim-three-glsl',
     transform(code, id) {
-      if (!/three[\\/]src[\\/].*\.glsl\.js$/.test(id)) return null;
+      // three's chunks, and our own /* glsl */ strings under src/
+      if (!/three[\\/]src[\\/].*\.glsl\.js$/.test(id) && !/[\\/]src[\\/].*\.js$/.test(id.replace(/^.*node_modules.*$/, ''))) return null;
       const out = code.replace(/\/\* glsl \*\/`([\s\S]*?)`/g, (_, body) => {
         const trimmed = body
           .replace(/\r/g, '')

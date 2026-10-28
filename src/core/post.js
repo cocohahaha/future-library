@@ -216,7 +216,9 @@ const COMPOSITE = /* glsl */ `
     // sRGB encode, then dither to hide banding in the soft gradients
     c = clamp( c, 0.0, 1.0 );
     c = mix( c * 12.92, 1.055 * pow( c, vec3( 1.0 / 2.4 ) ) - 0.055, step( 0.0031308, c ) );
-    c += ( hash( vUv * uRes + fract( uTime ) * 37.0 ) - 0.5 ) / 255.0;
+    // triangular (two-hash) dither: ±1 LSB, no visible steps in the haze
+    vec2 dp = vUv * uRes + fract( uTime ) * 37.0;
+    c += ( hash( dp ) + hash( dp + 17.13 ) - 1.0 ) / 255.0;
     gl_FragColor = vec4( c, 1.0 );
   }
 `;

@@ -14,6 +14,17 @@
   </head>
   <body>
     <canvas id="scene" tabindex="0" data-i18n-aria="canvas" aria-label="一本摊开在书桌上的立体书"></canvas>
+    <header class="hud-top">
+      <p class="brand"><span class="brand-title" data-i18n="brand">开放问题图书馆</span><span class="brand-sub" data-i18n="eyebrow">AI 之后的公共图书馆</span></p>
+      <button class="chip" id="lang" type="button" data-i18n-aria="langToggle" aria-label="切换语言">EN</button>
+    </header>
+    <nav class="capsule" aria-label="Book">
+      <button class="cap-btn" id="prev" type="button" data-i18n-aria="prev" aria-label="上一页">‹</button>
+      <button class="cap-where" id="where" type="button">打开这本书</button>
+      <button class="cap-zoom" id="zoom" type="button" hidden>近看</button>
+      <button class="cap-btn" id="next" type="button" data-i18n-aria="next" aria-label="下一页">›</button>
+    </nav>
+    <div id="a11y" class="sr-only" aria-live="polite"></div>
     <div class="loader" id="loader">
       <span class="loader-text" data-i18n="loader">装订中……</span>
       <span class="loader-bar" aria-hidden="true"><span id="loader-progress"></span></span>

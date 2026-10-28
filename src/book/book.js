@@ -1,4 +1,4 @@
-import { Group, Mesh, BufferGeometry, Float32BufferAttribute, Uint16BufferAttribute, Vector3, DynamicDrawUsage, DoubleSide } from 'three';
+import { Group, Mesh, BufferGeometry, BufferAttribute, Float32BufferAttribute, Uint16BufferAttribute, Vector3, DynamicDrawUsage, DoubleSide } from 'three';
 import * as C from './curve.js';
 import { pageMaterial, edgeMaterial, clothMaterial } from './materials.js';
 import { roundBox } from '../core/geo.js';
@@ -34,13 +34,15 @@ class Stack {
     this.nTop = top;
     this.nSide = side;
     const count = top + side * 2 + fore;
+    // BufferAttribute (not Float32BufferAttribute, which copies) so the
+    // arrays written in update() are the ones the GPU sees
     const g = new BufferGeometry();
     this.pos = new Float32Array(count * 3);
     this.nrm = new Float32Array(count * 3);
     this.uv = new Float32Array(count * 2);
-    g.setAttribute('position', new Float32BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage));
-    g.setAttribute('normal', new Float32BufferAttribute(this.nrm, 3).setUsage(DynamicDrawUsage));
-    g.setAttribute('uv', new Float32BufferAttribute(this.uv, 2).setUsage(DynamicDrawUsage));
+    g.setAttribute('position', new BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage));
+    g.setAttribute('normal', new BufferAttribute(this.nrm, 3).setUsage(DynamicDrawUsage));
+    g.setAttribute('uv', new BufferAttribute(this.uv, 2).setUsage(DynamicDrawUsage));
     const idx = [];
     // top: 3 rows along z
     for (let j = 0; j < 2; j++)
@@ -186,7 +188,7 @@ class Leaf {
         uv[v * 2] = C.S[k];
         uv[v * 2 + 1] = (C.H * j) / NZ_LEAF;
       }
-    g.setAttribute('position', new Float32BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage));
+    g.setAttribute('position', new BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage));
     g.setAttribute('normal', new Float32BufferAttribute(new Float32Array(count * 3), 3).setUsage(DynamicDrawUsage));
     g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     const idx = [];
@@ -329,7 +331,7 @@ export function createBook({ textures, pages }) {
       spIdx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
     }
   }
-  spineGeo.setAttribute('position', new Float32BufferAttribute(spPos, 3).setUsage(DynamicDrawUsage));
+  spineGeo.setAttribute('position', new BufferAttribute(spPos, 3).setUsage(DynamicDrawUsage));
   spineGeo.setAttribute('normal', new Float32BufferAttribute(new Float32Array(spPos.length), 3).setUsage(DynamicDrawUsage));
   spineGeo.setAttribute('uv', new Float32BufferAttribute(spUv, 2));
   spineGeo.setIndex(spIdx);

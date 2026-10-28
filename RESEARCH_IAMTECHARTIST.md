@@ -371,6 +371,39 @@ A sculpted cove with a camper van, palms, tide, ripples and two dolphins, in `js
 | 25 | `window.__ready`, `?shot`, hash deep links | Our `shots/` screenshot workflow and `?zone=` links | |
 | 26 | Every value tied to a dated source with `{v:key}` placeholders (`assets/numbers-D7lU_RWT.js`) | The Provenance Stacks spread cites its sources with access dates; claims on the Verification spread use the same keyed values | Content model, not visuals |
 
+**Where each adopted technique lives (polish pass, 2026-10-28).** Numbers refer to the table above. "Not yet" means the slot exists in the design but no code ships it.
+
+| # | File(s) | State |
+|---|---|---|
+| 1 | `src/stage/stage.js` (desk, lino pad, `PAD`), `src/stage/camera.js` (`createRig`: fov 30, closed / reading / close framings blended by `open` and `zoom`, portrait rules) | Adopted |
+| 2 | `src/stage/stage.js` `environment()` (procedural window-room PMREM), `windowCookie()` on the spot key, hemisphere fill; one `WINDOW_DIR` in `src/core/config.js` | Adopted |
+| 3 | `src/stage/stage.js` `setSpills()` (fixed pool of 3 point lights), fed each frame from the standing model's `lamps` by `src/diorama/plates.js` | Adopted |
+| 4 | `uShade` uniform in `src/book/materials.js` `pageMaterial()` | Not yet (uniform present, not driven) |
+| 5 | `src/book/curve.js` (`restingAngles`, `turningAngles`, `integrate`), `src/book/book.js` (`Stack`, `Leaf`, cloth spine, boards) | Adopted; 8 spreads: cover, title + contents, five zones, afterword |
+| 6 | `src/book/book.js` `goTo()` / `update()` (turn queue, riffle, interruptible); deep links in `src/main.js` `startSpread()` (`?spread=0..5`, `?spread=contents`, `?zone=<id>`) | Adopted; opens on tap rather than auto-opening |
+| 7 | `src/book/materials.js` `clothMaterial()` (foil, deboss from mask gradient, weave), `src/book/pages.js` `drawCover()` + `coverArt()` (the pasted plate is a canvas-drawn illustration of the library), `drawSpine()` | Adopted; headbands and ribbon not yet |
+| 8 | `src/book/materials.js` `edgeMaterial()` | Adopted |
+| 9 | `src/book/pages.js` `createPages()` (mm canvases, near / far density from `pagePx` / `pagePxFar` in `src/core/config.js`) | Adopted |
+| 10 | `src/book/type.js` | Adopted |
+| 11 | `src/book/pages.js` hit regions + `hitAt()`, `src/ui/input.js` `linkAt()` (raycast → page mm → contents links) | Adopted; lens card not yet |
+| 12 | n/a | Not yet |
+| 13 | `src/diorama/plates.js` (each zone model stands up from the plate, part by part); print slot `uPrintA` in `pageMaterial()` | Lift adopted; flat print, pen lines and hatching not yet |
+| 14 | n/a | Not adopted (models stand rather than fold) |
+| 15 | `src/book/materials.js` `uTrans` (light through a turning leaf); contemporary surfaces in `src/diorama/kit.js` | Adopted |
+| 16 | `src/diorama/plates.js` (`easeOutBack` stagger, back to front) | Adopted |
+| 17 | `src/diorama/figures.js` `makeFigure()` (jointed, lofted / lathed body parts, clothing, hair, idle `tick`) | Adopted; colour figures rather than ink and hatch |
+| 18 | `src/core/post.js` (hand-written: SSAO, dual-filter bloom, hue-preserving Neutral curve, vignette, triangular dither) | Adopted without the npm packages |
+| 19 | n/a | Not yet |
+| 20 | `src/style.css` (DOM capsule with `backdrop-filter`) | DOM fallback only |
+| 21 | `index.html`, `src/ui/hud.js`, `src/style.css` (capsule: ‹ place › and look closer; 中文 / EN chip top right) | Adopted |
+| 22 | `#a11y` aria-live mirror in `src/ui/hud.js`; keys in `src/ui/input.js` (← → PageUp/PageDown, Space, Home/End, Z, Esc) | Adopted; Still mode not yet |
+| 23 | n/a | Not yet |
+| 24 | `src/core/config.js` `detectTier()` / `TIERS`, `src/core/perf.js` `createGovernor()` | Adopted; render on demand not yet |
+| 25 | `src/main.js` (`window.__ready`, `window.__loq`, `?spread`, `?zone`, `?lang`, `?q`, `?zoom`) | Adopted |
+| 26 | n/a | Not yet |
+
+Decisions taken: system CJK font stacks (`src/book/type.js`), no bundled font yet; no sound yet; the hand-written post stack (keeps the bundle under 600 KB); a curling paper book with standing models; zh-CN default with the EN toggle (`src/i18n.js`, `loq-lang`, `?lang=`). The old valley modules (`src/arch`, `src/nature`, `src/world`, `src/life`, `src/zones`, `src/props`, and the old `src/core` builders) were removed.
+
 **Not adopted**
 - Libraries and fonts loaded over the network (home-sweet-home's jsdelivr importmap, fold's Google Fonts). Everything stays bundled.
 - fold's HDRI. every-joule's procedural window room covers it.

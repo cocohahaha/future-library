@@ -56,9 +56,10 @@ export function createRig(camera) {
     const closedD = fitDist(portrait ? 125 : 150, portrait ? 160 : 132, aspect) * 1.05;
     // open spread
     const readEl = portrait ? 1.08 : 0.98;
-    const readT = portrait ? new Vector3(96, base + 16, 4) : new Vector3(0, base + 18, 10);
+    const readT = portrait ? new Vector3(96, base + 22, 2) : new Vector3(0, base + 26, 4);
     const hx = portrait ? 112 : 228;
-    const hy = (H / 2 + 12) * Math.sin(readEl) + 55 * Math.cos(readEl);
+    // room above the spread for a standing miniature (~85 mm)
+    const hy = (H / 2 + 12) * Math.sin(readEl) + 78 * Math.cos(readEl);
     const readD = fitDist(hx, hy, aspect);
     // close-up on the miniature
     const closeEl = portrait ? 0.78 : 0.62;

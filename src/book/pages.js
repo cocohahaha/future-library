@@ -510,6 +510,13 @@ function drawCover(art, mask, lang) {
   const P = COVER_PLATE;
   art.fillStyle = '#f2ece0';
   art.fillRect(P.x0, P.y0, P.x1 - P.x0, P.y1 - P.y0);
+  art.save();
+  art.translate(P.x0, P.y0);
+  art.beginPath();
+  art.rect(0, 0, P.x1 - P.x0, P.y1 - P.y0);
+  art.clip();
+  coverArt(art, P.x1 - P.x0, P.y1 - P.y0);
+  art.restore();
   mask.fillStyle = 'rgb(0,90,0)';
   mask.fillRect(P.x0 - 3, P.y0 - 3, P.x1 - P.x0 + 6, P.y1 - P.y0 + 6);
   mask.fillStyle = 'rgb(0,255,0)';
@@ -520,6 +527,281 @@ function drawCover(art, mask, lang) {
     tracked(c, lang === 'zh' ? b.press : b.press.toUpperCase(), cx, HB - 24, lang === 'zh' ? 1.2 : 0.8, { align: 'center' });
   });
   both((c) => pressMark(c, cx, HB - 37, 4.2, c.fillStyle));
+}
+
+// ---------------------------------------------------------------- cover plate
+// The picture pasted into the cover's recess, drawn in plate millimetres: the
+// library seen across its forecourt. A butterfly roof (an open book), timber
+// fins over a ribbon window, a glazed reading hall lined with shelves, a
+// reflecting pool that mirrors it all, and a few visitors.
+function coverArt(c, w, h) {
+  let sd = 20417;
+  const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const grad = (y0, y1, stops) => {
+    const g = c.createLinearGradient(0, y0, 0, y1);
+    stops.forEach(([o, col]) => g.addColorStop(o, col));
+    return g;
+  };
+  const poly = (pts, fill, stroke, lw = 0.16) => {
+    c.beginPath();
+    pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+    c.closePath();
+    if (fill) {
+      c.fillStyle = fill;
+      c.fill();
+    }
+    if (stroke) {
+      c.strokeStyle = stroke;
+      c.lineWidth = lw;
+      c.stroke();
+    }
+  };
+  const disc = (x, y, r, fill) => {
+    c.beginPath();
+    c.arc(x, y, r, 0, Math.PI * 2);
+    c.fillStyle = fill;
+    c.fill();
+  };
+  const INKC = '#2e2a26';
+  const GY = 82; // ground line
+  const SPINES = ['#7d2f24', '#2f4763', '#47603f', '#c08a3a', '#e9e1cf', '#3a3633', '#8a8f93', '#a4502f', '#5d4a6e', '#d6c7a4'];
+  // sky, sun, a few high clouds
+  c.fillStyle = grad(0, GY, [[0, '#d5dedd'], [0.55, '#ebe7dc'], [1, '#f5e9d2']]);
+  c.fillRect(0, 0, w, GY);
+  c.fillStyle = 'rgba(255,246,222,0.75)';
+  disc(72, 17, 6.5, 'rgba(255,244,214,0.55)');
+  disc(72, 17, 4.2, '#fbf1da');
+  c.strokeStyle = 'rgba(255,255,255,0.6)';
+  c.lineCap = 'round';
+  for (let i = 0; i < 7; i++) {
+    const y = 8 + rnd() * 20;
+    const x = rnd() * w;
+    c.lineWidth = 0.6 + rnd() * 0.9;
+    c.beginPath();
+    c.moveTo(x - 6 - rnd() * 8, y);
+    c.lineTo(x + 6 + rnd() * 8, y);
+    c.stroke();
+  }
+  // distant city, pale
+  for (let x = -2; x < w; ) {
+    const bw = 3 + rnd() * 7;
+    const bh = 6 + rnd() * 16;
+    c.fillStyle = pick(['#cfd5d2', '#c6cdcb', '#d8dcd6']);
+    c.fillRect(x, GY - bh, bw, bh);
+    x += bw + rnd() * 1.5;
+  }
+  // trees behind the building
+  const crown = (x, y, r, dark, light) => {
+    for (let i = 0; i < 9; i++) disc(x + (rnd() - 0.5) * r * 1.3, y + (rnd() - 0.5) * r * 0.9, r * (0.45 + rnd() * 0.3), dark);
+    for (let i = 0; i < 6; i++) disc(x - r * 0.2 + (rnd() - 0.5) * r, y - r * 0.25 + (rnd() - 0.5) * r * 0.6, r * (0.3 + rnd() * 0.2), light);
+  };
+  for (const [x, y, r] of [[6, 56, 10], [17, 50, 8], [86, 52, 10], [95, 60, 8], [48, 30, 7], [33, 36, 6], [63, 35, 6]]) crown(x, y, r, '#7e8d6b', '#97a47f');
+  // plinth and steps
+  poly([[4, 78.2], [92, 78.2], [92, 80], [4, 80]], '#d2cabb', INKC);
+  poly([[1, 80], [95, 80], [95, GY], [1, GY]], '#dcd4c5', INKC);
+  // ground floor: warm reading hall behind glass
+  const g0 = 13;
+  const g1 = 83;
+  c.fillStyle = grad(57, 78, [[0, '#f8e2b4'], [1, '#e7bf85']]);
+  c.fillRect(g0, 57, g1 - g0, 21.2);
+  // the shelf wall at the back of the hall
+  for (let row = 0; row < 4; row++) {
+    const base = 62.5 + row * 4.1;
+    c.fillStyle = '#8b6844';
+    c.fillRect(g0, base, g1 - g0, 0.45);
+    for (let x = g0 + 0.4; x < g1 - 0.6; ) {
+      if (x > 44 && x < 52) {
+        x = 52;
+        continue; // the stair opening
+      }
+      const sw = 0.45 + rnd() * 0.6;
+      const sh = 2.2 + rnd() * 1.2;
+      c.fillStyle = pick(SPINES);
+      c.fillRect(x, base - sh, sw, sh);
+      x += sw + (rnd() < 0.06 ? 1.2 : 0.06);
+    }
+  }
+  // a stair rising through the opening
+  c.strokeStyle = '#6a4b2e';
+  c.lineWidth = 0.35;
+  for (let i = 0; i < 9; i++) {
+    const y = 77.6 - i * 2.3;
+    c.beginPath();
+    c.moveTo(45 + i * 0.4, y);
+    c.lineTo(51.5 - i * 0.2, y);
+    c.stroke();
+  }
+  // pendants
+  for (const x of [22, 34, 62, 74]) {
+    c.strokeStyle = INKC;
+    c.lineWidth = 0.08;
+    c.beginPath();
+    c.moveTo(x, 57);
+    c.lineTo(x, 59.4);
+    c.stroke();
+    disc(x, 60.2, 1.6, 'rgba(255,236,180,0.5)');
+    poly([[x - 1, 60.3], [x + 1, 60.3], [x + 0.55, 59.3], [x - 0.55, 59.3]], '#fff4d6');
+  }
+  // people inside, softened by the glass
+  const person = (x, y, s, col, legs, opt = {}) => {
+    const k = s / 7.5; // s = standing height in mm
+    c.lineCap = 'round';
+    // shadow
+    c.fillStyle = 'rgba(40,30,20,0.18)';
+    c.beginPath();
+    c.ellipse(x + 0.6 * k, y + 0.15, 1.6 * k, 0.4 * k, 0, 0, Math.PI * 2);
+    c.fill();
+    // legs
+    c.strokeStyle = legs;
+    c.lineWidth = 0.75 * k;
+    const st = opt.walk ? 0.9 * k : 0.25 * k;
+    c.beginPath();
+    c.moveTo(x - 0.25 * k, y - 3.4 * k);
+    c.lineTo(x - st, y - 0.2 * k);
+    c.moveTo(x + 0.25 * k, y - 3.4 * k);
+    c.lineTo(x + st, y - 0.2 * k);
+    c.stroke();
+    // body
+    poly([[x - 0.95 * k, y - 6.1 * k], [x + 0.95 * k, y - 6.1 * k], [x + (opt.coat ? 1.2 : 0.85) * k, y - (opt.coat ? 2.4 : 3.3) * k], [x - (opt.coat ? 1.2 : 0.85) * k, y - (opt.coat ? 2.4 : 3.3) * k]], col);
+    // arms
+    c.strokeStyle = col;
+    c.lineWidth = 0.5 * k;
+    c.beginPath();
+    c.moveTo(x - 0.9 * k, y - 5.8 * k);
+    c.lineTo(x - (opt.walk ? 1.6 : 1.1) * k, y - 3.6 * k);
+    c.moveTo(x + 0.9 * k, y - 5.8 * k);
+    c.lineTo(x + (opt.book ? 0.4 : opt.walk ? 1.5 : 1.1) * k, y - (opt.book ? 4.6 : 3.6) * k);
+    c.stroke();
+    if (opt.book) poly([[x - 0.2 * k, y - 5.1 * k], [x + 1.1 * k, y - 5.1 * k], [x + 1.1 * k, y - 4.3 * k], [x - 0.2 * k, y - 4.3 * k]], '#f3eee2');
+    // neck, head, hair
+    disc(x, y - 6.9 * k, 0.72 * k, opt.skin || '#c99b77');
+    c.fillStyle = opt.hair || '#2b2420';
+    c.beginPath();
+    c.arc(x, y - 7.05 * k, 0.76 * k, Math.PI * 1.02, Math.PI * 1.98);
+    c.fill();
+    if (opt.long) c.fillRect(x - 0.76 * k, y - 7.1 * k, 1.52 * k, 1.1 * k);
+  };
+  person(26, 78, 6.8, '#5f7480', '#3a3a3a', { skin: '#e0b896' });
+  person(30, 78, 6.4, '#b5643d', '#2f3540', { book: true, skin: '#8d5a3b', hair: '#1d1714', long: true });
+  person(67, 78, 7, '#e8e2d4', '#4b4f58', { skin: '#f0cdb0', hair: '#8c6a43' });
+  c.fillStyle = 'rgba(255,250,238,0.16)';
+  c.fillRect(g0, 57, g1 - g0, 21.2);
+  // glass: mullions, transom, a couple of reflections
+  c.strokeStyle = '#3b3833';
+  c.lineWidth = 0.22;
+  for (let x = g0; x <= g1 + 0.01; x += 7) {
+    c.beginPath();
+    c.moveTo(x, 57);
+    c.lineTo(x, 78.2);
+    c.stroke();
+  }
+  c.lineWidth = 0.14;
+  c.beginPath();
+  c.moveTo(g0, 61.2);
+  c.lineTo(g1, 61.2);
+  c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.22)';
+  for (const x of [17, 40, 58, 77]) poly([[x, 78], [x + 3.2, 78], [x + 9, 61.2], [x + 5.8, 61.2]], c.fillStyle);
+  // columns under the cantilever
+  for (const x of [8, 88]) poly([[x - 0.5, 59], [x + 0.5, 59], [x + 0.5, 78.2], [x - 0.5, 78.2]], '#efebe3', INKC, 0.12);
+  // upper floor: concrete band, timber fins over a ribbon window
+  const roofU = (x) => 34.6 + 4.6 * (1 - Math.abs(x - 48) / 46);
+  poly([[5, 56.4], [91, 56.4], [91, 59], [5, 59]], '#cfc7b8', INKC);
+  poly([[5, roofU(5)], [48, roofU(48)], [91, roofU(91)], [91, 56.4], [5, 56.4]], '#9b6c43');
+  c.fillStyle = grad(43, 52, [[0, '#f9e5bb'], [1, '#eec98f']]);
+  c.fillRect(8, 43.5, 80, 8.4);
+  for (let x = 8.6; x < 87.6; ) {
+    const sw = 0.4 + rnd() * 0.5;
+    const sh = 2 + rnd() * 1.6;
+    c.fillStyle = pick(SPINES);
+    c.fillRect(x, 51.9 - sh, sw, sh);
+    x += sw + 0.07;
+  }
+  for (let x = 5.4; x < 91; x += 1.55) {
+    const top = roofU(x) + 0.1;
+    c.fillStyle = '#7c5434';
+    c.fillRect(x + 0.62, top, 0.24, 56.4 - top);
+    c.fillStyle = '#c3935f';
+    c.fillRect(x, top, 0.62, 56.4 - top);
+  }
+  // the roof: a thin white slab folded like an open book, planted on top
+  for (let i = 0; i < 26; i++) {
+    const x = 6 + rnd() * 84;
+    disc(x, roofU(x) - 2.9 - rnd() * 0.6, 0.7 + rnd() * 0.8, pick(['#7f8f6a', '#93a27c', '#6f7e5c']));
+  }
+  poly([[2, roofU(2) - 2.3], [48, roofU(48) - 2.3], [94, roofU(94) - 2.3], [94, roofU(94)], [48, roofU(48)], [2, roofU(2)]], '#f4f1ea', INKC, 0.16);
+  c.strokeStyle = INKC;
+  c.lineWidth = 0.16;
+  c.strokeRect(5, roofU(91), 86, 59 - roofU(91));
+  // forecourt: paving converging on the door, reflecting pool
+  c.fillStyle = grad(GY, h, [[0, '#e3d9c6'], [1, '#d6c9b2']]);
+  c.fillRect(0, GY, w, h - GY);
+  c.strokeStyle = 'rgba(80,64,44,0.25)';
+  c.lineWidth = 0.1;
+  for (let i = -12; i <= 12; i++) {
+    c.beginPath();
+    c.moveTo(48 + i * 2.2, GY);
+    c.lineTo(48 + i * 9, h);
+    c.stroke();
+  }
+  for (let y = GY + 1.2, s = 1.2; y < h; s *= 1.25, y += s) {
+    c.beginPath();
+    c.moveTo(0, y);
+    c.lineTo(w, y);
+    c.stroke();
+  }
+  const py0 = 88;
+  const py1 = 100;
+  const m = c.getTransform();
+  c.save();
+  c.beginPath();
+  c.rect(6, py0, 84, py1 - py0);
+  c.clip();
+  c.fillStyle = '#9cb0ad';
+  c.fillRect(6, py0, 84, py1 - py0);
+  // mirror the building into the water
+  c.globalAlpha = 0.55;
+  const k = 0.3; // squashed so the whole building fits the pool
+  c.translate(0, py0 + k * GY);
+  c.scale(1, -k);
+  c.drawImage(c.canvas, m.e, m.f + m.d * 20, m.a * w, m.d * (GY - 20), 0, 20, w, GY - 20);
+  c.restore();
+  c.save();
+  c.fillStyle = 'rgba(120,150,150,0.35)';
+  c.fillRect(6, py0, 84, py1 - py0);
+  c.strokeStyle = 'rgba(255,255,255,0.55)';
+  c.lineWidth = 0.12;
+  for (let i = 0; i < 26; i++) {
+    const y = py0 + 0.6 + rnd() * (py1 - py0 - 1.2);
+    const x = 8 + rnd() * 76;
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(x + 2 + rnd() * 6, y);
+    c.stroke();
+  }
+  c.restore();
+  poly([[6, py0], [90, py0], [90, py1], [6, py1]], null, '#8c8274', 0.3);
+  // visitors on the forecourt
+  person(16, 86.5, 7.6, '#2f4763', '#25262a', { walk: true, skin: '#6f4a33', hair: '#141110' });
+  person(78, 86, 7.4, '#c08a3a', '#3c3f46', { book: true, skin: '#e9c6a4', hair: '#5a3d2a', long: true });
+  person(84, 86.3, 7.9, '#4c5e48', '#2c2a28', { coat: true, skin: '#d2a07c' });
+  person(30, 108, 10.5, '#a4502f', '#2a2c33', { walk: true, skin: '#f1cfb2', hair: '#3a2a1c', long: true });
+  person(64, 109, 11, '#e8e1d0', '#38404a', { coat: true, skin: '#8a5a3c', hair: '#18120f', book: true });
+  // foreground trees framing the view
+  const trunk = (x, y0, y1) => poly([[x - 0.5, y1], [x + 0.5, y1], [x + 0.25, y0], [x - 0.25, y0]], '#5b4532');
+  trunk(3, 74, h);
+  trunk(93, 70, h);
+  crown(2, 70, 9, '#5f7050', '#7d8d64');
+  crown(95, 66, 9, '#5f7050', '#7d8d64');
+  // paper grain and a hairline frame
+  for (let i = 0; i < 1400; i++) {
+    c.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.18)' : 'rgba(60,40,20,0.08)';
+    c.fillRect(rnd() * w, rnd() * h, 0.18, 0.18);
+  }
+  c.strokeStyle = INKC;
+  c.lineWidth = 0.25;
+  c.strokeRect(0.15, 0.15, w - 0.3, h - 0.3);
 }
 
 function drawSpine(art, mask, lang) {
