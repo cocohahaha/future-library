@@ -267,14 +267,15 @@ function towerMesh(list, mat) {
 }
 
 // ---------------------------------------------------------------- trees
+// a few thousand of these are instanced, so keep them coarse (~150 triangles)
 function treeGeometry() {
-  const trunk = tint(xf(cylinder(0.22, 3.4, 6, { rTop: 0.16 }), { t: [0, 0, 0] }), 0x4a3a2c);
+  const trunk = tint(xf(cylinder(0.22, 3.4, 5, { rTop: 0.16, caps: false }), { t: [0, 0, 0] }), 0x4a3a2c);
   const lumps = [
     [0, 4.6, 0, 2.3],
     [0.9, 4.0, 0.5, 1.6],
     [-0.8, 4.2, -0.6, 1.7],
     [0.1, 5.7, -0.2, 1.5]
-  ].map(([x, y, z, r]) => tint(xf(sphere(r, 8, 6), { t: [x, y, z], s: [1, 0.85, 1] }), 0xffffff));
+  ].map(([x, y, z, r]) => tint(xf(sphere(r, 6, 4), { t: [x, y, z], s: [1, 0.85, 1] }), 0xffffff));
   return merge([trunk, ...lumps]);
 }
 
@@ -518,6 +519,7 @@ export function buildCity({ renderer, tier, library }) {
   towers.name = 'towers';
   group.add(towers);
   // roof plant
+  let roofPlant = null;
   {
     const g = xf(box(1, 1, 1), { t: [0, 0.5, 0] });
     const m = new InstancedMesh(g, M.roofUnits, T.roof.length);
@@ -531,10 +533,13 @@ export function buildCity({ renderer, tier, library }) {
     m.castShadow = true;
     m.receiveShadow = true;
     m.computeBoundingSphere();
+    m.name = 'roof-plant';
     group.add(m);
+    roofPlant = m;
   }
 
   // ---- far silhouettes beyond the grid, for the haze to swallow
+  let farTowers = null;
   {
     const far = [];
     const R0 = T.N * GRID.px + 60;
@@ -549,7 +554,9 @@ export function buildCity({ renderer, tier, library }) {
     const m = towerMesh(far, towers.material);
     m.castShadow = false;
     m.receiveShadow = false;
+    m.name = 'towers-far';
     group.add(m);
+    farTowers = m;
   }
 
   // ---- civic plaza: paving, lawns, planters, the reflecting pool
@@ -633,8 +640,8 @@ export function buildCity({ renderer, tier, library }) {
     treePts.push([x, 104, 0.85 + rnd() * 0.25]);
     treePts.push([x + 5, 68, 0.75 + rnd() * 0.2]);
   }
-  const streetR = hi ? 620 : 380;
-  const stepT = hi ? 13 : 18;
+  const streetR = hi ? 620 : 360;
+  const stepT = hi ? 13 : 20;
   for (let k = -8; k <= 8; k++) {
     const sx = GRID.ox + k * GRID.px;
     const sz = GRID.oz + k * GRID.pz;
@@ -659,13 +666,22 @@ export function buildCity({ renderer, tier, library }) {
     const n = Math.round((p.w * p.d) / 160);
     for (let k = 0; k < n; k++) treePts.push([p.x + (rnd() - 0.5) * p.w, p.z + (rnd() - 0.5) * p.d, 0.9 + rnd() * 0.5]);
   }
-  const trees = new InstancedMesh(treeGeometry(), treeMaterial(), treePts.length);
-  placeTrees(trees, treePts, rnd);
-  trees.castShadow = true;
-  trees.receiveShadow = true;
-  trees.computeBoundingSphere();
-  trees.name = 'trees';
-  group.add(trees);
+  // two draws: trees near the library cast shadows; the street trees further
+  // out (most of them, and mostly outside the sun's shadow frustum) do not
+  const treeGeo = treeGeometry();
+  const treeMat = treeMaterial();
+  const treeSets = [];
+  for (const near of [true, false]) {
+    const pts = treePts.filter(([x, z]) => (Math.hypot(x, z) < 300) === near);
+    const m = new InstancedMesh(treeGeo, treeMat, pts.length);
+    placeTrees(m, pts, rnd);
+    m.castShadow = near;
+    m.receiveShadow = true;
+    m.computeBoundingSphere();
+    m.name = near ? 'trees' : 'trees-far';
+    group.add(m);
+    treeSets.push(m);
+  }
   {
     // park lawns
     const g = T.parks.map((p) => xf(prism(roundRectPoly(p.w, p.d, 6, 4), 0.3), { t: [p.x, 0, p.z] }));
@@ -828,6 +844,11 @@ export function buildCity({ renderer, tier, library }) {
   }
   updateTrains(0);
 
+  // the pool mirrors the library, the plaza, the near towers and the sky; the
+  // thousands of small things (trees, roof plant, far skyline, life) are left
+  // out of that second pass, and it is redrawn every other frame
+  const reflectHide = [water, ...treeSets, roofPlant, farTowers];
+  let frameNo = 0;
   return {
     group,
     water,
@@ -835,9 +856,9 @@ export function buildCity({ renderer, tier, library }) {
     path,
     pool,
     towers,
-    update(t, renderer, scene, camera, sky) {
+    update(t, renderer, scene, camera, sky, extraHide = []) {
       updateTrains(t);
-      if (reflector) reflector.render(renderer, scene, camera, pool.y, [water], sky);
+      if (reflector && frameNo++ % 2 === 0) reflector.render(renderer, scene, camera, pool.y, reflectHide.concat(extraHide), sky);
     },
     resize(w, h) {
       if (reflector) reflector.setSize(w, h);

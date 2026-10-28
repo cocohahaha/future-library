@@ -42,6 +42,14 @@ body.is-overview .brand { opacity: .92; text-shadow: 0 0 14px rgba(250, 246, 238
 .cap-back { display: inline-flex; align-items: center; gap: 8px; padding: 0 18px 0 12px; background: #a4502f !important; color: #fbf3e6 !important; letter-spacing: .06em; }
 .cap-back:hover { background: #8f4428 !important; }
 .cap-back-arrow { font-size: 22px; line-height: 1; padding-bottom: 3px; }
+.cap-zones { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: 4px; }
+.cap-zone { display: inline-flex; align-items: center; gap: 7px; padding: 0 12px 0 6px; color: #3a352f !important; letter-spacing: .04em; transition: background .25s; }
+.cap-zone-num { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--zc); color: #fbf7ef; font: 600 11.5px/1 system-ui, -apple-system, sans-serif; box-shadow: 0 0 0 1.5px rgba(250, 246, 238, .9); }
+.cap-zone.is-on { background: rgba(42, 38, 34, .1) !important; box-shadow: inset 0 0 0 1.5px var(--zc); }
+html[lang='en'] .cap-zone-name { font-style: italic; letter-spacing: .01em; }
+@media (max-width: 1100px) { html[lang='en'] .cap-zone-name { display: none; } html[lang='en'] .cap-zone { padding: 0 6px; } }
+@media (max-width: 860px) { .cap-zone-name { display: none; } .cap-zone { padding: 0 6px; } }
+@media (max-width: 380px) { .cap-back { padding: 0 12px 0 9px; } .cap-zone { padding: 0 4px; } }
 .ov-hint { position: fixed; left: 50%; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 54px); transform: translateX(-50%); margin: 0; padding: 6px 12px; border-radius: 999px;
   font: 500 11.5px/1.2 system-ui, -apple-system, 'PingFang SC', 'Noto Sans CJK SC', sans-serif; letter-spacing: .06em; color: #3a352f; background: rgba(250, 246, 238, .62);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap; opacity: 0; transition: opacity .8s; pointer-events: none; z-index: 2; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }

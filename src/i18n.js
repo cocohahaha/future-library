@@ -52,6 +52,7 @@ export const UI = {
   ovHintMouse: { zh: '拖动旋转 · 滚轮缩放 · 右键平移 · 点击标签', en: 'Drag to orbit · scroll to zoom · right-drag to pan · click a label' },
   ovCanvas: { zh: '开放问题图书馆坐落在未来城市之中的全景', en: 'The Library of Open Questions standing in a future city' },
   ovLabels: { zh: '图书馆的五个部分', en: 'The five parts of the library' },
+  ovZones: { zh: '前往图书馆的五个部分', en: 'Go to one of the five parts' },
   ovReadPage: { zh: '翻到书中这一页', en: 'Open its page in the book' }
 };
 

@@ -32,7 +32,16 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
   const SUN_ANGLE = 0.6;
   const sun = new SpotLight(0xffc48a, 6.6, 0, SUN_ANGLE, 0.25, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(tier.shadow * (hi ? 2 : 1), tier.shadow * (hi ? 2 : 1));
+  sun.shadow.mapSize.set(tier.shadow, tier.shadow);
+  // the shadow map is redrawn when its frustum moves and otherwise only every
+  // few frames (for the trains and the swaying trees): it is the most
+  // expensive pass of the overview
+  sun.shadow.autoUpdate = false;
+  sun.shadow.needsUpdate = true;
+  const shadowEvery = hi ? 2 : 4;
+  let shadowAge = 0;
+  const lastFocus = new Vector3(1e9, 0, 0);
+  let lastExt = 0;
   sun.shadow.bias = -0.00025;
   sun.shadow.normalBias = 0.6;
   sun.shadow.radius = tier.shadowRadius;
@@ -48,6 +57,7 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
   scene.add(city.group);
   const life = buildLife({ tier });
   scene.add(life.group);
+  const reflectHide = [life.group];
 
   // ---- controls and labels
   let active = false;
@@ -55,13 +65,8 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     root: labelRoot,
     anchors: library.anchors,
     onPick(id) {
-      if (labels.open === id) {
-        labels.setOpen(null);
-        return;
-      }
-      labels.setOpen(id);
-      const f = library.focus[id];
-      orbit.setGoal({ target: f.target, radius: f.radius, phi: f.phi, theta: f.theta ?? orbit.cur.theta }, 1.9);
+      if (labels.open === id) labels.setOpen(null);
+      else focusZone(id);
     },
     onRead
   });
@@ -71,6 +76,17 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     isActive: () => active,
     onTap: () => labels.open && labels.setOpen(null)
   });
+
+  // fly to a zone and open its card; null closes the card and flies home
+  function focusZone(id) {
+    labels.setOpen(id || null);
+    if (!id) {
+      orbit.setGoal(orbit.home, 1.9);
+      return;
+    }
+    const f = library.focus[id];
+    orbit.setGoal({ target: f.target, radius: f.radius, phi: f.phi, theta: f.theta ?? orbit.cur.theta }, 1.9);
+  }
 
   const lightSpace = new Matrix4();
   const tmp = new Vector3();
@@ -84,6 +100,12 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     tmp.x = Math.round(tmp.x / texel) * texel;
     tmp.y = Math.round(tmp.y / texel) * texel;
     tmp.applyMatrix4(lightSpace);
+    if (tmp.distanceToSquared(lastFocus) > 1e-4 || Math.abs(ext - lastExt) > ext * 0.02 || ++shadowAge >= shadowEvery) {
+      sun.shadow.needsUpdate = true;
+      shadowAge = 0;
+      lastFocus.copy(tmp);
+      lastExt = ext;
+    }
     sun.target.position.copy(tmp);
     sun.position.copy(SUN_DIR).multiplyScalar(SUN_D).add(tmp);
     sun.target.updateMatrixWorld();
@@ -120,6 +142,11 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
     get active() {
       return active;
     },
+    focusZone,
+    // the zone whose card is open (a ZONE_ORDER id), or null
+    get zone() {
+      return labels.open;
+    },
     key(k) {
       return orbit.key(k);
     },
@@ -139,7 +166,7 @@ export function createOverview({ renderer, tier, canvas, labelRoot, onRead }) {
       camera.updateMatrixWorld();
       sky.position.copy(camera.position);
       placeSun();
-      city.update(clock, renderer, scene, camera, sky);
+      city.update(clock, renderer, scene, camera, sky, reflectHide);
       if (!labelRoot.hidden) labels.update(camera, w, h);
     }
   };

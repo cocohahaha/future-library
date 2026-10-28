@@ -211,8 +211,13 @@ function stepTransition(dt) {
       ov.enter({ instant: instantOpen });
       debugOverviewCamera();
       showLoader(false);
-      phase = 'reveal';
       pt = 0;
+      // a deep link has no page to fade out of: the loader's own fade reveals
+      // the city, and the first frame drawn is already the finished view
+      if (instantOpen) {
+        fade = 1;
+        phase = 'idle';
+      } else phase = 'reveal';
     } else if (pt > 0.3 || instantOpen) showLoader(true);
   }
   if (phase === 'reveal') {
@@ -261,18 +266,38 @@ function debugOverviewCamera() {
   ov.orbit.snap(s);
   ov.orbit.setGoal(s, 7);
 }
+// the overview bar's zone shortcuts (and keys 1–5): fly to a part of the
+// building and open its card; the open zone again, or null, flies home
+function focusZone(id) {
+  if (view !== 'overview' || !ov) return;
+  if (id && ov.labels.open === id) id = null;
+  if (ov.focusZone) {
+    ov.focusZone(id);
+    return;
+  }
+  ov.labels.setOpen(id);
+  const f = id ? ov.library.focus[id] : ov.orbit.home;
+  ov.orbit.setGoal({ target: f.target, radius: f.radius, phi: f.phi, theta: f.theta ?? ov.orbit.cur.theta }, 1.9);
+}
 window.addEventListener('keydown', (e) => {
   if (view !== 'overview' || phase !== 'idle') return;
   if (e.key === 'Escape') {
-    closeOverview();
+    if (ov.labels.open) focusZone(null);
+    else closeOverview();
     e.preventDefault();
     return;
   }
   if (e.target && e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= ZONE_ORDER.length && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    focusZone(ZONE_ORDER[n - 1]);
+    e.preventDefault();
+    return;
+  }
   if (ov.key(e.key)) e.preventDefault();
 });
 
-const hud = createHud({ go, toggleZoom, openOverview, closeOverview });
+const hud = createHud({ go, toggleZoom, openOverview, closeOverview, focusZone });
 let instantShow = false;
 book.on('start', (s) => {
   plates.hide();
@@ -346,6 +371,7 @@ function frame() {
   post.uniforms.uFade.value = fade;
   if (view === 'overview') {
     ov.update(dt, clock);
+    hud.setOvZone(ov.labels.open);
     post.render(ov.scene, ov.camera, clock);
     return;
   }
@@ -360,8 +386,14 @@ function frame() {
   post.render(scene, camera, clock);
 }
 requestAnimationFrame(frame);
-if (params.get('view') === 'overview') openOverview({ instant: true });
-else loaderEl.classList.add('is-done');
+// ?view=overview opens straight into the overview, but only once the page has
+// loaded: Chrome aborts (net::ERR_ABORTED) a dynamic import started while this
+// entry module is still evaluating, and the overview chunk imports this one.
+if (params.get('view') === 'overview') {
+  const open = () => openOverview({ instant: true });
+  if (document.readyState === 'complete') setTimeout(open, 0);
+  else window.addEventListener('load', () => setTimeout(open, 0), { once: true });
+} else loaderEl.classList.add('is-done');
 document.body.classList.add('is-ready');
 
 window.__loq = { scene, camera, renderer, book, pages, plates, rig, stage, post, tier, go, openOverview, closeOverview, get overview() { return ov; }, get phase() { return phase; } };
