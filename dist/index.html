@@ -12,8 +12,8 @@
     <meta name="description" content="开放问题图书馆：一座 AI 时代之后的公共图书馆，以交互式程序化 3D 场景呈现。" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>开放问题图书馆</title>
-    <script type="module" crossorigin src="./assets/index-NeCKOkVz.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-4z7RYkdD.css">
+    <script type="module" crossorigin src="./assets/index-CiCW9EfJ.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DdwKPjZ2.css">
   </head>
   <body>
     <canvas id="scene" data-i18n-aria="canvas" aria-label="可交互的 3D 图书馆庭院"></canvas>
@@ -53,7 +53,11 @@
       <nav class="zonebar" id="zonebar" data-i18n-aria="zonebar" aria-label="图书馆分区"></nav>
     </div>
 
-    <div class="loader" id="loader"><span class="loader-enso" aria-hidden="true"></span><span data-i18n="loader">研墨中……</span></div>
+    <div class="loader" id="loader">
+      <span class="loader-enso" aria-hidden="true"></span>
+      <span class="loader-text" data-i18n="loader">研墨中……</span>
+      <span class="loader-bar" aria-hidden="true"><span id="loader-progress"></span></span>
+    </div>
     <noscript>此体验需要 JavaScript 与 WebGL。This experience needs JavaScript and WebGL.</noscript>
   </body>
 </html>
