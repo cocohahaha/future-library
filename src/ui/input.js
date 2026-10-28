@@ -5,8 +5,9 @@ import { W } from '../book/curve.js';
 // tap turns forward on the right half of the screen and back on the left.
 // A quick horizontal flick turns too; a slower drag looks around (the rig
 // springs back). Wheel / pinch zoom, arrow keys and PageUp/PageDown turn.
+// Everything is ignored while the library overview owns the canvas.
 
-export function createInput({ canvas, camera, book, pages, rig, go, toggleZoom }) {
+export function createInput({ canvas, camera, book, pages, rig, go, toggleZoom, openOverview, isActive = () => true }) {
   const ray = new Raycaster();
   const ndc = new Vector2();
   const pts = new Map();
@@ -27,6 +28,7 @@ export function createInput({ canvas, camera, book, pages, rig, go, toggleZoom }
   }
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (!isActive()) return;
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch (_) {
@@ -68,6 +70,8 @@ export function createInput({ canvas, camera, book, pages, rig, go, toggleZoom }
     if (!s.moved && dt < 600) {
       const act = book.settled > 0 ? linkAt(e.clientX, e.clientY) : null;
       if (act && act.type === 'zone') return go({ zone: act.zone });
+      if (act && act.type === 'goto') return go(act.spread);
+      if (act && act.type === 'overview') return openOverview();
       const r = canvas.getBoundingClientRect();
       if (book.target === 0) return go(1);
       go(e.clientX - r.left > r.width / 2 ? +1 : -1, true);
@@ -84,12 +88,14 @@ export function createInput({ canvas, camera, book, pages, rig, go, toggleZoom }
   canvas.addEventListener(
     'wheel',
     (e) => {
+      if (!isActive()) return;
       e.preventDefault();
       rig.zoomBy(Math.exp(e.deltaY * 0.0012), performance.now() / 1000);
     },
     { passive: false }
   );
   window.addEventListener('keydown', (e) => {
+    if (!isActive()) return;
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     const k = e.key;
     if (k === 'ArrowRight' || k === 'PageDown' || (k === ' ' && !e.shiftKey)) go(+1, true);

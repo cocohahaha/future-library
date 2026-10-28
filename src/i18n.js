@@ -40,7 +40,19 @@ export const UI = {
   now: { zh: '如今', en: 'Now' },
   openQuestion: { zh: '开放问题', en: 'Open question' },
   plate: { zh: '图版', en: 'Plate' },
-  goTo: { zh: '翻到', en: 'Go to' }
+  goTo: { zh: '翻到', en: 'Go to' },
+  // library overview (the building in its city, loaded on demand)
+  overview: { zh: '图书馆全貌', en: 'Library overview' },
+  overviewAria: { zh: '查看图书馆全貌', en: 'See the whole library in its city' },
+  ovKicker: { zh: '全景 · 城市之中', en: 'Panorama · In the city' },
+  ovLink: { zh: '走出书页，看看图书馆全貌', en: 'Step out of the book: the whole library' },
+  backToBook: { zh: '返回书本', en: 'Back to book' },
+  ovLoading: { zh: '城市正从纸上展开……', en: 'Unfolding the city…' },
+  ovHintTouch: { zh: '拖动旋转 · 双指缩放 · 轻点标签', en: 'Drag to orbit · pinch to zoom · tap a label' },
+  ovHintMouse: { zh: '拖动旋转 · 滚轮缩放 · 右键平移 · 点击标签', en: 'Drag to orbit · scroll to zoom · right-drag to pan · click a label' },
+  ovCanvas: { zh: '开放问题图书馆坐落在未来城市之中的全景', en: 'The Library of Open Questions standing in a future city' },
+  ovLabels: { zh: '图书馆的五个部分', en: 'The five parts of the library' },
+  ovReadPage: { zh: '翻到书中这一页', en: 'Open its page in the book' }
 };
 
 // ---------------------------------------------------------------- the book

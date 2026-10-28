@@ -16,6 +16,7 @@ export const SPINE_W = T + 2 * BT + 4.5; // cloth spine strip width (mm)
 
 const INK = '#26231f';
 const INK2 = '#6d665c';
+const PAL_CLOTH = '#a4502f'; // the bookcloth terracotta, also the HUD's call to action
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 const FOLIO = { r1: 1, v1: 2, r2: 3, v2: 4, r3: 5, v3: 6, r4: 7, v4: 8, r5: 9, v5: 10, r6: 11, v6: 12, bk: 13 };
 
@@ -196,8 +197,23 @@ function drawContents(ctx, id, lang, hits) {
   ctx.fillText(ap, m.r - ctx.measureText(ap).width, y - 1);
   hits.push({ x: m.l - 2, y: y - 9, w: m.r - m.l + 4, h: 13, action: { type: 'goto', spread: 7 } });
 
+  // library overview: leaves the book for the whole building in its city
+  y += 12;
+  const ovName = t('overview');
+  ctx.fillStyle = PAL_CLOTH;
+  setFont(ctx, lang, 4.4, { weight: 600, italic: lang !== 'zh' });
+  ctx.fillText(ovName, m.l + 13, y - 1);
+  const ovW = ctx.measureText(ovName).width;
+  setFont(ctx, lang, 2.6, { kind: 'sans', weight: 600 });
+  const ovK = lang === 'zh' ? t('ovKicker') : t('ovKicker').toUpperCase();
+  tracked(ctx, ovK, m.l + 13 + ovW + 3, y - 1.4, lang === 'zh' ? 0.4 : 0.3);
+  setFont(ctx, lang, 4.4, { kind: 'sans', weight: 600 });
+  const arrow = '↗';
+  ctx.fillText(arrow, m.r - ctx.measureText(arrow).width, y - 1);
+  hits.push({ x: m.l - 2, y: y - 8, w: m.r - m.l + 4, h: 11, action: { type: 'overview' } });
+
   // how to read
-  y = 196;
+  y = 203;
   ctx.strokeStyle = INK2;
   rule(ctx, m.l, y - 9, m.l + 18, y - 9, 0.25);
   ctx.fillStyle = INK;
@@ -363,7 +379,7 @@ function drawPlate(ctx, id, lang, hits, zi) {
   folio(ctx, id, lang);
 }
 
-function drawAfter(ctx, id, lang) {
+function drawAfter(ctx, id, lang, hits) {
   const b = bookText();
   const m = margins(id);
   const w = m.r - m.l;
@@ -379,6 +395,16 @@ function drawAfter(ctx, id, lang) {
   for (const para of b.afterBody.split('\n\n')) {
     y = paragraph(ctx, para, m.l, y, w, { size: bs, leading: lang === 'zh' ? 1.75 : 1.48, justify: lang === 'zh' }).y + 3;
   }
+  // printed link out of the book, set like the zone pages' action links
+  const ay = Math.min(H - 76, y + 9);
+  ctx.fillStyle = PAL_CLOTH;
+  setFont(ctx, lang, 3.4, { kind: 'sans', weight: 600 });
+  const link = `→  ${t('ovLink')}`;
+  ctx.fillText(link, m.l, ay);
+  const lw = ctx.measureText(link).width;
+  ctx.strokeStyle = PAL_CLOTH;
+  rule(ctx, m.l, ay + 1.4, m.l + lw, ay + 1.4, 0.25);
+  hits.push({ x: m.l - 3, y: ay - 6, w: lw + 6, h: 10, action: { type: 'overview' } });
   pressMark(ctx, m.l + 6, H - 60, 5, INK2);
   ctx.fillStyle = INK2;
   setFont(ctx, lang, 3.0, { weight: 400, italic: lang !== 'zh' });
@@ -914,7 +940,7 @@ export function createPages({ tier, anisotropy = 8 }) {
       else if (e.kind === 'contents') drawContents(ctx, e.id, lang, e.hits);
       else if (e.kind === 'zone') drawZone(ctx, e.id, lang, e.hits, e.zone);
       else if (e.kind === 'plate') drawPlate(ctx, e.id, lang, e.hits, e.zone);
-      else if (e.kind === 'after') drawAfter(ctx, e.id, lang);
+      else if (e.kind === 'after') drawAfter(ctx, e.id, lang, e.hits);
       else if (e.kind === 'card') drawCard(ctx, e.id, lang);
     }
     if (resized || !e.tex) {

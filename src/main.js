@@ -1,5 +1,5 @@
 import './style.css';
-import { WebGLRenderer, PerspectiveCamera, NoToneMapping, PCFShadowMap, DataTexture, RGBAFormat, UnsignedByteType, SRGBColorSpace, Vector2 } from 'three';
+import { WebGLRenderer, PerspectiveCamera, NoToneMapping, PCFShadowMap, DataTexture, RGBAFormat, UnsignedByteType, SRGBColorSpace, Vector2, Vector3, MathUtils } from 'three';
 import { detectTier, TIERS } from './core/config.js';
 import { createBaker } from './core/tex.js';
 import { createPost } from './core/post.js';
@@ -84,7 +84,195 @@ function go(arg, relative = false) {
   if (zoomed) toggleZoom(false);
   book.goTo(s);
 }
-const hud = createHud({ go, toggleZoom });
+// ---- library overview (图书馆全貌): a separate scene, loaded on first use.
+// Opening it dives the camera into the page and fades through the paper's
+// colour; the city then settles in from high above its plan. Coming back
+// reverses that and lands on the book (on a zone's spread, if asked).
+let ov = null; // the built overview
+let ovPost = null; // its post settings (AO radius etc. at metre scale)
+let ovLoading = null;
+let view = 'book'; // the scene being rendered: 'book' | 'overview'
+let phase = 'idle'; // 'dive' → 'wait' → 'reveal' | 'rise' → 'land'
+let pt = 0; // seconds into the phase
+let fade = 1; // post fade (0 = all paper colour)
+let dive = 0; // 0..1 how far the book camera has fallen into the page
+let diveFrom = 0;
+let instantOpen = false;
+let pendingZone = -1;
+const PAPER = new Vector3(0.92, 0.87, 0.77); // linear page colour
+const BOOK_POST = {
+  aoRadius: post.ao.uRadius.value,
+  aoPower: post.ao.uPower.value,
+  bloom: post.uniforms.uBloom.value,
+  threshold: post.bright.uThreshold.value,
+  exposure: post.uniforms.uExposure.value,
+  vignette: post.uniforms.uVignette.value
+};
+function applyPost(p) {
+  post.ao.uRadius.value = p.aoRadius;
+  post.ao.uPower.value = p.aoPower;
+  post.uniforms.uBloom.value = p.bloom;
+  post.bright.uThreshold.value = p.threshold;
+  post.uniforms.uExposure.value = p.exposure;
+  post.uniforms.uVignette.value = p.vignette;
+}
+function setViewParam(on) {
+  try {
+    const u = new URL(location.href);
+    if (on) u.searchParams.set('view', 'overview');
+    else u.searchParams.delete('view');
+    history.replaceState(history.state, '', u);
+  } catch (_) {
+    /* file:// or sandboxed */
+  }
+}
+const loaderText = loaderEl.querySelector('.loader-text');
+function showLoader(on) {
+  if (on) loaderText.textContent = t('ovLoading');
+  loaderEl.classList.toggle('is-done', !on);
+}
+function loadOverview() {
+  if (!ovLoading)
+    ovLoading = import('./overview/index.js')
+      .then(async (mod) => {
+        const o = mod.createOverview({
+          renderer,
+          tier,
+          canvas,
+          labelRoot: document.getElementById('ov-labels'),
+          onRead: (id) => closeOverview({ zone: ZONE_ORDER.indexOf(id) })
+        });
+        renderer.getDrawingBufferSize(db);
+        o.resize(window.innerWidth, window.innerHeight, db.x, db.y);
+        try {
+          await renderer.compileAsync(o.scene, o.camera);
+        } catch (_) {
+          /* compiles on first render instead */
+        }
+        ovPost = mod.POST;
+        ov = o;
+        return o;
+      })
+      .catch((err) => {
+        ovLoading = null;
+        console.error(err);
+        if (phase === 'wait') closeOverview();
+      });
+  return ovLoading;
+}
+function openOverview({ instant = false } = {}) {
+  if (view === 'overview' || phase === 'dive' || phase === 'wait') return;
+  loadOverview();
+  if (zoomed) toggleZoom(false);
+  post.uniforms.uFadeColor.value.copy(PAPER);
+  instantOpen = instant;
+  phase = instant ? 'wait' : 'dive';
+  pt = 0;
+  if (instant) fade = 0;
+  hud.setView('overview');
+  setViewParam(true);
+}
+function closeOverview({ zone = -1 } = {}) {
+  if (phase === 'rise' || phase === 'land') return;
+  if (view !== 'overview' && phase !== 'dive' && phase !== 'wait' && phase !== 'reveal') return;
+  pendingZone = zone;
+  setViewParam(false);
+  hud.setView('book');
+  if (view === 'overview') {
+    ov.leave();
+    phase = 'rise';
+  } else {
+    // still falling into the page (or waiting on the module): climb back out
+    showLoader(false);
+    diveFrom = dive;
+    phase = 'land';
+  }
+  pt = 0;
+}
+const smooth = (a, b, x) => MathUtils.smoothstep(x, a, b);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+function stepTransition(dt) {
+  if (phase === 'idle') return;
+  pt += dt;
+  if (phase === 'dive') {
+    const k = Math.min(1, pt / 1.15);
+    dive = easeInOut(k);
+    fade = 1 - smooth(0.45, 1, k);
+    if (k >= 1) {
+      phase = 'wait';
+      pt = 0;
+    }
+  }
+  if (phase === 'wait') {
+    fade = 0;
+    if (ov) {
+      view = 'overview';
+      applyPost(ovPost);
+      ov.enter({ instant: instantOpen });
+      debugOverviewCamera();
+      showLoader(false);
+      phase = 'reveal';
+      pt = 0;
+    } else if (pt > 0.3 || instantOpen) showLoader(true);
+  }
+  if (phase === 'reveal') {
+    fade = smooth(0, 1.0, pt);
+    if (pt >= 1.0) phase = 'idle';
+  }
+  if (phase === 'rise') {
+    fade = 1 - smooth(0, 0.75, pt);
+    if (pt >= 0.75) {
+      view = 'book';
+      applyPost(BOOK_POST);
+      ov.hideLabels();
+      diveFrom = 1;
+      phase = 'land';
+      pt = 0;
+    }
+  }
+  if (phase === 'land') {
+    if (pt <= dt && pendingZone >= 0) {
+      go({ zone: pendingZone });
+      pendingZone = -1;
+    }
+    const k = Math.min(1, pt / 1.3);
+    dive = diveFrom * (1 - easeInOut(k));
+    fade = Math.max(fade, smooth(0, 0.85, pt));
+    if (k >= 1) {
+      dive = 0;
+      fade = 1;
+      phase = 'idle';
+    }
+  }
+}
+const diveEnd = new Vector3();
+function applyDive() {
+  // fall toward the paper under the look-at point, ending a few mm above it
+  diveEnd.copy(rig.target).add(new Vector3(0, 24, 9));
+  camera.position.lerp(diveEnd, dive);
+  camera.lookAt(rig.target);
+}
+// ?view=overview&ovcam=theta,phi,radius pins the overview camera (screenshots)
+function debugOverviewCamera() {
+  const c = params.get('ovcam');
+  if (!c || !ov) return;
+  const [theta, phi, radius] = c.split(',').map(Number);
+  const s = { theta, phi, radius };
+  ov.orbit.snap(s);
+  ov.orbit.setGoal(s, 7);
+}
+window.addEventListener('keydown', (e) => {
+  if (view !== 'overview' || phase !== 'idle') return;
+  if (e.key === 'Escape') {
+    closeOverview();
+    e.preventDefault();
+    return;
+  }
+  if (e.target && e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (ov.key(e.key)) e.preventDefault();
+});
+
+const hud = createHud({ go, toggleZoom, openOverview, closeOverview });
 let instantShow = false;
 book.on('start', (s) => {
   plates.hide();
@@ -96,7 +284,7 @@ book.on('settle', (s) => {
   pages.focus(s);
   hud.setSpread(s);
 });
-createInput({ canvas, camera, book, pages, rig, go, toggleZoom });
+createInput({ canvas, camera, book, pages, rig, go, toggleZoom, openOverview, isActive: () => view === 'book' && phase === 'idle' });
 
 const db = new Vector2();
 function resize() {
@@ -108,6 +296,7 @@ function resize() {
   camera.updateProjectionMatrix();
   renderer.getDrawingBufferSize(db);
   post.setSize(db.x, db.y);
+  if (ov) ov.resize(w, h, db.x, db.y);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -153,17 +342,27 @@ function frame() {
   const dt = Math.min(Math.max(raw, 0), 0.05);
   clock += dt;
   governor.sample(raw);
+  stepTransition(dt);
+  post.uniforms.uFade.value = fade;
+  if (view === 'overview') {
+    ov.update(dt, clock);
+    post.render(ov.scene, ov.camera, clock);
+    return;
+  }
   if (!turn) book.update(dt);
   rig.state.open = book.openness;
   rig.update(dt, clock, camera.aspect);
+  if (dive > 0) applyDive();
   stage.update(camera);
   plates.update(dt, clock);
   pages.step(1);
+  if (phase === 'wait') return; // all paper colour: nothing to draw
   post.render(scene, camera, clock);
 }
 requestAnimationFrame(frame);
-loaderEl.classList.add('is-done');
+if (params.get('view') === 'overview') openOverview({ instant: true });
+else loaderEl.classList.add('is-done');
 document.body.classList.add('is-ready');
 
-window.__loq = { scene, camera, renderer, book, pages, plates, rig, stage, post, tier, go };
+window.__loq = { scene, camera, renderer, book, pages, plates, rig, stage, post, tier, go, openOverview, closeOverview, get overview() { return ov; }, get phase() { return phase; } };
 window.__ready = true;

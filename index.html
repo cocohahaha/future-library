@@ -18,11 +18,17 @@
       <p class="brand"><span class="brand-title" data-i18n="brand">开放问题图书馆</span><span class="brand-sub" data-i18n="eyebrow">AI 之后的公共图书馆</span></p>
       <button class="chip" id="lang" type="button" data-i18n-aria="langToggle" aria-label="切换语言">EN</button>
     </header>
-    <nav class="capsule" aria-label="Book">
+    <nav class="capsule capsule-book" aria-label="Book">
       <button class="cap-btn" id="prev" type="button" data-i18n-aria="prev" aria-label="上一页">‹</button>
       <button class="cap-where" id="where" type="button">打开这本书</button>
       <button class="cap-zoom" id="zoom" type="button" hidden>近看</button>
       <button class="cap-btn" id="next" type="button" data-i18n-aria="next" aria-label="下一页">›</button>
+      <button class="cap-ov" id="overview" type="button" data-i18n-aria="overviewAria" aria-label="查看图书馆全貌"><svg viewBox="0 0 20 20" width="17" height="17" aria-hidden="true"><path d="M2 17.5h16M3.5 17.5V10h3.5v7.5M8.5 17.5V3.5h4.2v14M14.2 17.5v-5.6h2.8v5.6M10.6 6.5v1.2M10.6 10v1.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" stroke-linecap="round"/></svg><span class="cap-ov-text" data-i18n="overview">图书馆全貌</span></button>
+    </nav>
+    <div class="ov-labels" id="ov-labels" role="group" data-i18n-aria="ovLabels" aria-label="图书馆的五个部分" hidden></div>
+    <p class="ov-hint" id="ov-hint" aria-hidden="true"></p>
+    <nav class="capsule capsule-ov" id="ov-bar" aria-label="Overview" hidden>
+      <button class="cap-back" id="back" type="button"><span class="cap-back-arrow" aria-hidden="true">‹</span><span data-i18n="backToBook">返回书本</span></button>
     </nav>
     <div id="a11y" class="sr-only" aria-live="polite"></div>
     <div class="loader" id="loader">
