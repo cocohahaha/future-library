@@ -14,7 +14,8 @@ import {
   Matrix4,
   Plane,
   Vector2,
-  Vector4
+  Vector4,
+  Float32BufferAttribute
 } from 'three';
 import { roundBox, box, cylinder, sphere, merge, xf, tint, plane, prism, roundRectPoly, smoothPath, Mesher } from '../core/geo.js';
 import { patch, ATM, FOG_GLSL } from './atmos.js';
@@ -42,32 +43,38 @@ function towerMaterial() {
     key: 'towers',
     vHead: /* glsl */ `
       attribute vec4 aStyle;
+      attribute vec3 aFlat;
+      attribute vec3 aFace;
       varying vec4 vStyle;
       varying vec3 vLoc;
       varying vec3 vNl;
     `,
+    // the facade grid is laid out on the undeformed form (aFlat / aFace), so
+    // it twists and tapers with the tower
     vEnd: /* glsl */ `
       vec3 sz = vec3( length( instanceMatrix[ 0 ].xyz ), length( instanceMatrix[ 1 ].xyz ), length( instanceMatrix[ 2 ].xyz ) );
-      vLoc = position * sz;
-      vNl = normal;
+      vLoc = aFlat * sz;
+      vNl = aFace;
       vStyle = aStyle;
     `,
     fHead: /* glsl */ `
       varying vec4 vStyle;
       varying vec3 vLoc;
       varying vec3 vNl;
-      float tGlass; float tLit; vec3 tWarm;
+      float tGlass; float tLit; vec3 tWarm; float tRough; float tGreen;
       float th( vec3 p ) { p = fract( p * vec3( 0.1031, 0.103, 0.0973 ) ); p += dot( p, p.yxz + 33.33 ); return fract( ( p.x + p.y ) * p.z ); }
       float band( float x, float a, float b, float aa ) { return smoothstep( a - aa, a + aa, x ) * ( 1.0 - smoothstep( b - aa, b + aa, x ) ); }
     `,
+    // styles: 0 curtain wall, 1 punched, 2 fins, 3 balcony bands, 4 vertical
+    // farm (planted floors under grow lights); aStyle.w = 1: a roof garden
     fColor: /* glsl */ `
       {
         float style = vStyle.x;
         float seed = vStyle.y;
         float wall = 1.0 - step( 0.5, abs( vNl.y ) );
         float u = abs( vNl.x ) > 0.5 ? vLoc.z : vLoc.x;
-        float fh = style < 0.5 ? 3.9 : style < 1.5 ? 3.2 : style < 2.5 ? 4.2 : 3.4;
-        float bw = style < 0.5 ? 1.8 : style < 1.5 ? 3.6 : style < 2.5 ? 1.3 : 2.4;
+        float fh = style < 0.5 ? 3.9 : style < 1.5 ? 3.2 : style < 2.5 ? 4.2 : style < 3.5 ? 3.4 : 4.4;
+        float bw = style < 0.5 ? 1.8 : style < 1.5 ? 3.6 : style < 2.5 ? 1.3 : style < 3.5 ? 2.4 : 3.0;
         vec2 g = vec2( u / bw, vAtmW.y / fh );
         vec2 cell = floor( g );
         vec2 f = fract( g );
@@ -76,9 +83,10 @@ function towerMaterial() {
         if ( style < 0.5 ) m = band( f.y, 0.24, 0.98, aa.y ) * band( f.x, 0.05, 0.97, aa.x );
         else if ( style < 1.5 ) m = band( f.y, 0.3, 0.86, aa.y ) * band( f.x, 0.2, 0.8, aa.x );
         else if ( style < 2.5 ) m = band( f.x, 0.3, 0.96, aa.x ) * band( f.y, 0.04, 0.98, aa.y );
-        else m = band( f.y, 0.36, 0.94, aa.y ) * band( f.x, 0.02, 0.99, aa.x );
+        else if ( style < 3.5 ) m = band( f.y, 0.36, 0.94, aa.y ) * band( f.x, 0.02, 0.99, aa.x );
+        else m = band( f.y, 0.4, 0.97, aa.y ) * band( f.x, 0.03, 0.97, aa.x );
         // far away the grid is sub-pixel: use its average coverage instead
-        float cover = style < 0.5 ? 0.68 : style < 1.5 ? 0.34 : style < 2.5 ? 0.62 : 0.56;
+        float cover = style < 0.5 ? 0.68 : style < 1.5 ? 0.34 : style < 2.5 ? 0.62 : style < 3.5 ? 0.56 : 0.55;
         m = mix( m, cover, smoothstep( 0.25, 0.7, max( aa.x, aa.y ) ) );
         // ground floor: shopfronts
         float shop = 1.0 - smoothstep( 5.2, 5.6, vAtmW.y );
@@ -90,20 +98,144 @@ function towerMaterial() {
         float k = th( vec3( cell.yx, seed * 31.0 + 4.0 ) );
         tWarm = mix( vec3( 1.0, 0.58, 0.26 ), vec3( 1.0, 0.82, 0.6 ), k ) * ( 0.5 + 1.1 * k * k );
         vec3 wallC = diffuseColor.rgb;
-        // reflective glass: a bright, cool metallic base so the sky shows in it
-        vec3 glassC = mix( vec3( 0.26, 0.33, 0.4 ), wallC * 0.6 + vec3( 0.04, 0.06, 0.08 ), style < 0.5 ? 0.3 : 0.1 );
+        // glass, tinted per tower: cool blue-grey, sea green, bronze or
+        // champagne (the warm ones turn gold in the low sun); a little
+        // lighter toward the top, where it holds more sky
+        float gk = th( vec3( seed * 113.0, 7.0, 3.0 ) );
+        vec3 glassT = gk < 0.34 ? vec3( 0.22, 0.31, 0.4 ) : gk < 0.56 ? vec3( 0.16, 0.3, 0.3 ) : gk < 0.8 ? vec3( 0.42, 0.3, 0.19 ) : vec3( 0.52, 0.45, 0.34 );
+        glassT *= 0.85 + 0.3 * smoothstep( 20.0, 220.0, vAtmW.y );
+        vec3 glassC = mix( glassT, wallC * 0.6 + vec3( 0.04, 0.06, 0.08 ), style < 0.5 ? 0.12 : 0.25 );
+        tRough = 0.05 + 0.16 * th( vec3( seed * 71.0, 1.0, 9.0 ) );
+        // leafy noise for the farms' planted floors and the roof gardens
+        float leaf = th( vec3( floor( vAtmW.xz / 1.4 ), floor( vAtmW.y / 1.4 ) ) );
+        vec3 greenC = mix( vec3( 0.12, 0.2, 0.06 ), vec3( 0.32, 0.4, 0.13 ), leaf );
+        tGreen = 0.0;
+        if ( style > 3.5 ) {
+          wallC = mix( greenC, wallC, band( f.y, 0.33, 0.4, aa.y ) );
+          tGreen = 1.0 - tGlass;
+          // magenta-white grow lights on most floors
+          tWarm = mix( vec3( 1.0, 0.45, 0.75 ), vec3( 1.0, 0.85, 0.75 ), step( 0.6, k ) ) * 0.9;
+          tLit = tGlass * step( 0.3, th( vec3( cell.y, seed * 17.0, 2.0 ) ) );
+        }
         vec3 roofC = wallC * 0.55;
+        if ( vStyle.w > 0.5 ) {
+          // planted roof with paths
+          vec2 rp = abs( fract( vAtmW.xz / 7.0 ) - 0.5 );
+          float path = step( 0.44, max( rp.x, rp.y ) );
+          roofC = mix( greenC * 1.15, vec3( 0.42, 0.39, 0.34 ), path );
+          if ( wall < 0.5 ) tGreen = 1.0 - path;
+        }
         diffuseColor.rgb = wall > 0.5 ? mix( wallC, glassC, tGlass ) : roofC;
       }
     `,
     fRough: /* glsl */ `
-      roughnessFactor = mix( 0.72, 0.09, tGlass );
-      metalnessFactor = mix( 0.0, 0.78, tGlass );
+      roughnessFactor = mix( mix( 0.72, 0.95, tGreen ), tRough, tGlass );
+      metalnessFactor = mix( 0.0, 0.8, tGlass );
     `,
+    // windows lit from inside, and a broad warm glare where the glass turns
+    // the low sun toward the camera
     fEmissive: /* glsl */ `
       totalEmissiveRadiance += tWarm * tLit * 0.9;
+      {
+        vec3 sv = normalize( ( viewMatrix * vec4( uSunDir, 0.0 ) ).xyz );
+        vec3 rv = reflect( normalize( -vViewPosition ), normal );
+        float gl = pow( max( dot( rv, sv ), 0.0 ), 10.0 ) * step( 0.0, dot( normal, sv ) );
+        totalEmissiveRadiance += vec3( 1.0, 0.6, 0.3 ) * gl * tGlass * 1.3;
+      }
     `
   });
+}
+
+// ---------------------------------------------------------------- tower forms
+// Unit towers (plan in [-0.5, 0.5]², height 0..1), each one instanced draw.
+// A plan polygon is lofted through rows [y, scale, twist, offset x, offset z];
+// several tiers make a stepped tower. aFlat / aFace hold the facade
+// coordinates before any twist, so the window grid winds round with the form;
+// `arc` lays it out along the perimeter instead (round plans).
+const SQ = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+const chamfer = (c) => [[-0.5 + c, -0.5], [0.5 - c, -0.5], [0.5, -0.5 + c], [0.5, 0.5 - c], [0.5 - c, 0.5], [-0.5 + c, 0.5], [-0.5, 0.5 - c], [-0.5, -0.5 + c]];
+const circle = (n) => Array.from({ length: n }, (_, i) => [-Math.sin((i / n) * Math.PI * 2) * 0.5, Math.cos((i / n) * Math.PI * 2) * 0.5]);
+
+function towerForm(poly, tiers, { smooth = false, arc = false } = {}) {
+  const m = new Mesher();
+  const flat = [];
+  const face = [];
+  const n = poly.length;
+  const per = [0];
+  for (let i = 0; i < n; i++) per.push(per[i] + Math.hypot(poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]));
+  const put = (p, nrm, fl, fc) => {
+    flat.push(...fl);
+    face.push(...fc);
+    return m.v(p[0], p[1], p[2], nrm[0], nrm[1], nrm[2], 0, 0);
+  };
+  for (const rows of tiers) {
+    const at = ([y, s, a, ox = 0, oz = 0], x, z) => {
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      return { p: [ox + (x * ca - z * sa) * s, y, oz + (x * sa + z * ca) * s], f: [ox + x * s, y, oz + z * s], ca, sa };
+    };
+    for (let e = 0; e < n; e++) {
+      const c0 = poly[e];
+      const c1 = poly[(e + 1) % n];
+      let ex = c1[1] - c0[1];
+      let ez = -(c1[0] - c0[0]);
+      const l = Math.hypot(ex, ez);
+      ex /= l;
+      ez /= l;
+      const base = m.p.length / 3;
+      for (const row of rows) {
+        for (const [c, k] of [[c0, e], [c1, e + 1]]) {
+          const q = at(row, c[0], c[1]);
+          let nx = ex;
+          let nz = ez;
+          if (smooth) {
+            const lc = Math.hypot(c[0], c[1]) || 1;
+            nx = c[0] / lc;
+            nz = c[1] / lc;
+          }
+          const nr = [nx * q.ca - nz * q.sa, 0, nx * q.sa + nz * q.ca];
+          if (arc) put(q.p, nr, [per[k], row[0], 0], [0, 0, 1]);
+          else put(q.p, nr, q.f, [ex, 0, ez]);
+        }
+      }
+      for (let i = 0; i < rows.length - 1; i++) {
+        const a = base + i * 2;
+        m.quad(a, a + 2, a + 3, a + 1);
+      }
+    }
+    // the tier's roof
+    const top = rows[rows.length - 1];
+    const c = put([top[3] || 0, top[0], top[4] || 0], [0, 1, 0], [top[3] || 0, top[0], top[4] || 0], [0, 1, 0]);
+    const ring = poly.map(([x, z]) => {
+      const q = at(top, x, z);
+      return put(q.p, [0, 1, 0], q.f, [0, 1, 0]);
+    });
+    for (let i = 0; i < n; i++) m.tri(c, ring[(i + 1) % n], ring[i]);
+  }
+  const g = m.build();
+  g.setAttribute('aFlat', new Float32BufferAttribute(flat, 3));
+  g.setAttribute('aFace', new Float32BufferAttribute(face, 3));
+  return g;
+}
+
+function towerForms() {
+  const twistRows = [];
+  for (let i = 0; i <= 10; i++) twistRows.push([i / 10, 1 - 0.12 * (i / 10), (i / 10) * 1.2]);
+  return {
+    box: towerForm(SQ, [[[0, 1, 0], [1, 1, 0]]]),
+    // tapering, chamfered: an obelisk of glass
+    taper: towerForm(chamfer(0.13), [[[0, 1, 0], [1, 0.6, 0]]]),
+    // twisting a quarter turn as it rises
+    twist: towerForm(chamfer(0.09), [twistRows]),
+    // a round tower, slightly tapered
+    round: towerForm(circle(20), [[[0, 1, 0], [1, 0.84, 0]]], { smooth: true, arc: true }),
+    // stepping back in three planted tiers, off-centre
+    stepped: towerForm(SQ, [
+      [[0, 1, 0], [0.5, 1, 0]],
+      [[0.5, 0.78, 0, 0.08, -0.07], [0.78, 0.78, 0, 0.08, -0.07]],
+      [[0.78, 0.52, 0, -0.06, 0.05], [1, 0.52, 0, -0.06, 0.05]]
+    ])
+  };
 }
 
 // ground: asphalt, sidewalks, markings, courtyards — all from world xz
@@ -179,26 +311,63 @@ function buildTowers({ tier, rnd, bridges }) {
   const parks = [];
   // [wall / spandrel colour, facade style: 0 curtain wall, 1 punched, 2 fins, 3 balcony bands]
   const tints = [
-    [0xe8e4dc, 3], [0xd9d2c6, 1], [0x4a5660, 0], [0x6c7a84, 0], [0x8f9ba3, 0], [0xc9b79c, 2],
+    [0xe8e4dc, 3], [0xd9d2c6, 2], [0x4a5660, 0], [0x6c7a84, 0], [0x8f9ba3, 0], [0xc9b79c, 2],
     [0xb98d6a, 1], [0xa7a097, 2], [0x2f3a42, 0], [0xdcd6ca, 3], [0xf0eee8, 2], [0x5d6770, 0]
   ];
+  const spires = [];
+  // contemporary forms for most of the taller towers; the low ones stay boxes
+  const pickKind = (h) => {
+    const r = rnd();
+    if (h > 70) return r < 0.22 ? 'twist' : r < 0.44 ? 'taper' : r < 0.62 ? 'round' : r < 0.8 ? 'stepped' : 'box';
+    if (h > 34) return r < 0.2 ? 'stepped' : r < 0.32 ? 'round' : r < 0.42 ? 'taper' : 'box';
+    return 'box';
+  };
   const push = (x, z, w, d, h, y0, cap) => {
     const [col, style] = tints[Math.floor(rnd() * tints.length)];
-    const st = rnd() < 0.25 ? Math.floor(rnd() * 4) : style;
+    let st = rnd() < 0.25 ? Math.floor(rnd() * 4) : style;
     const seed = rnd();
     const lit = 0.04 + rnd() * 0.16;
-    list.push({ x, z, w, d, h, y: y0, style: st, seed, lit, color: col });
+    const kind = pickKind(h);
+    if (kind === 'twist' || kind === 'round') w = d = Math.min(w, d);
+    if (kind !== 'box' && st === 1) st = 0;
+    // a few vertical farms
+    if (h > 30 && rnd() < 0.08) st = 4;
+    const garden = kind === 'stepped' || st === 4 || rnd() < 0.3 ? 1 : 0;
+    const main = { x, z, w, d, h, y: y0, style: st, seed, lit, color: col, kind, garden };
+    list.push(main);
+    // a slender spire on some of the tall new forms
+    if (kind !== 'box' && kind !== 'stepped' && h > 80 && rnd() < 0.55) {
+      const top = kind === 'taper' ? 0.6 : 0.84;
+      spires.push({ x, z, r: Math.min(w, d) * top * 0.09, h: h * (0.16 + rnd() * 0.16), y: y0 + h });
+    }
+    if (kind !== 'box') return main;
     // setback crown on taller towers
     if (h > 55 && rnd() < 0.7) {
       const f = 0.62 + rnd() * 0.2;
       const hh = Math.min(cap - (y0 + h), h * (0.15 + rnd() * 0.25));
-      if (hh > 6) list.push({ x, z, w: w * f, d: d * f, h: hh, y: y0 + h, style: st, seed, lit, color: col });
+      if (hh > 6) list.push({ x, z, w: w * f, d: d * f, h: hh, y: y0 + h, style: st, seed, lit, color: col, kind, garden });
     }
-    // rooftop plant, sometimes a garden
+    // rooftop plant (not on gardens)
     const top = list[list.length - 1];
-    const units = 1 + Math.floor(rnd() * 3);
+    const units = garden ? 0 : 1 + Math.floor(rnd() * 3);
     for (let k = 0; k < units; k++)
       roof.push({ x: top.x + (rnd() - 0.5) * top.w * 0.5, z: top.z + (rnd() - 0.5) * top.d * 0.5, w: 3 + rnd() * 6, d: 3 + rnd() * 6, h: 2 + rnd() * 3, y: top.y + top.h });
+    return main;
+  };
+  // glazed sky bridges between twin towers, planted on top
+  const skyBridge = (a, b, y0) => {
+    const z0 = Math.max(a.z - a.d / 2, b.z - b.d / 2);
+    const z1 = Math.min(a.z + a.d / 2, b.z + b.d / 2);
+    const top = Math.min(a.h, b.h);
+    if (z1 - z0 < 12 || top < 40) return;
+    // centre to centre, so it meets any form (its ends are hidden inside)
+    const xa = a.x;
+    const xb = b.x;
+    const n = top > 90 && rnd() < 0.5 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const y = y0 + top * (n === 2 ? (k ? 0.78 : 0.45) : 0.55 + rnd() * 0.25);
+      list.push({ x: (xa + xb) / 2, z: (z0 + z1) / 2, w: xb - xa, d: Math.min(9, z1 - z0 - 3), h: 7.5, y, style: 0, seed: rnd(), lit: 0.5, color: 0xe8e4dc, kind: 'box', garden: 1 });
+    }
   };
   for (let i = -N; i <= N; i++)
     for (let j = -N; j <= N; j++) {
@@ -220,18 +389,19 @@ function buildTowers({ tier, rnd, bridges }) {
       }
       const bridged = bridges.find((b) => b.cell[0] === i && b.cell[1] === j);
       const podium = bridged ? bridged.y : rnd() < 0.55 ? 6 + Math.floor(rnd() * 3) * 3.5 : 0;
-      if (podium > 0) list.push({ x: cx, z: cz, w: bx, d: bz, h: podium, y: 0, style: 0, seed: rnd(), lit: 0.6, color: 0xb9b2a6 });
+      if (podium > 0) list.push({ x: cx, z: cz, w: bx, d: bz, h: podium, y: 0, style: 0, seed: rnd(), lit: 0.6, color: 0xb9b2a6, kind: 'box', garden: rnd() < 0.4 ? 1 : 0 });
       const t = rnd();
       if (t < 0.38) {
         const w = 26 + rnd() * 16;
         const d = 22 + rnd() * 14;
         push(cx + (rnd() - 0.5) * (bx - w) * 0.8, cz + (rnd() - 0.5) * (bz - d) * 0.8, w, d, hOf(1.25), podium, cap);
       } else if (t < 0.72) {
-        for (const s of [-1, 1]) {
+        const twins = [-1, 1].map((s) => {
           const w = bx / 2 - 4 - rnd() * 6;
           const d = 20 + rnd() * (bz - 26);
-          push(cx + s * bx * 0.25, cz + (rnd() - 0.5) * (bz - d) * 0.7, w, d, hOf(1), podium, cap);
-        }
+          return push(cx + s * bx * 0.25, cz + (rnd() - 0.5) * (bz - d) * 0.7, w, d, hOf(1), podium, cap);
+        });
+        skyBridge(twins[0], twins[1], podium);
       } else {
         for (const sx of [-1, 1])
           for (const sz of [-1, 1]) {
@@ -241,12 +411,24 @@ function buildTowers({ tier, rnd, bridges }) {
           }
       }
     }
-  return { list, roof, parks, N };
+  return { list, roof, parks, spires, N };
 }
 
-function towerMesh(list, mat) {
-  const g = xf(box(1, 1, 1), { t: [0, 0.5, 0] });
-  const mesh = new InstancedMesh(g, mat, list.length);
+// one instanced draw per form, all on the one facade material
+function towerMeshes(list, mat, forms, name) {
+  const out = [];
+  for (const kind of Object.keys(forms)) {
+    const sub = list.filter((b) => (b.kind || 'box') === kind);
+    if (!sub.length) continue;
+    const m = towerMesh(sub, mat, forms[kind]);
+    m.name = `${name}-${kind}`;
+    out.push(m);
+  }
+  return out;
+}
+
+function towerMesh(list, mat, g) {
+  const mesh = new InstancedMesh(g.clone(), mat, list.length);
   const style = new Float32Array(list.length * 4);
   const o = new Object3D();
   const c = new Color();
@@ -256,7 +438,7 @@ function towerMesh(list, mat) {
     o.updateMatrix();
     mesh.setMatrixAt(i, o.matrix);
     mesh.setColorAt(i, c.set(b.color));
-    style.set([b.style, b.seed, b.lit, 0], i * 4);
+    style.set([b.style, b.seed, b.lit, b.garden || 0], i * 4);
   });
   mesh.geometry.setAttribute('aStyle', new InstancedBufferAttribute(style, 4));
   mesh.instanceColor.needsUpdate = true;
@@ -515,9 +697,25 @@ export function buildCity({ renderer, tier, library }) {
     { cell: [2, -1], y: 10.5 }
   ];
   const T = buildTowers({ tier, rnd, bridges });
-  const towers = towerMesh(T.list, towerMaterial());
-  towers.name = 'towers';
-  group.add(towers);
+  const forms = towerForms();
+  const towerMat = towerMaterial();
+  const towers = towerMeshes(T.list, towerMat, forms, 'towers');
+  group.add(...towers);
+  // spires: slender tapering masts on some of the tall towers
+  if (T.spires.length) {
+    const m = new InstancedMesh(cylinder(0.5, 1, 8, { rTop: 0.03 }), M.metal, T.spires.length);
+    const o = new Object3D();
+    T.spires.forEach((s, i) => {
+      o.position.set(s.x, s.y - 0.5, s.z);
+      o.scale.set(s.r * 2, s.h, s.r * 2);
+      o.updateMatrix();
+      m.setMatrixAt(i, o.matrix);
+    });
+    m.castShadow = true;
+    m.computeBoundingSphere();
+    m.name = 'spires';
+    group.add(m);
+  }
   // roof plant
   let roofPlant = null;
   {
@@ -549,14 +747,19 @@ export function buildCity({ renderer, tier, library }) {
       const x = Math.sin(a) * r;
       const z = Math.cos(a) * r;
       const dt = Math.exp(-((x - 520) ** 2 + (z + 560) ** 2) / (2 * 900 ** 2));
-      far.push({ x, z, w: 20 + rnd() * 40, d: 20 + rnd() * 40, h: 20 + rnd() * 70 + 160 * dt * rnd(), y: 0, style: Math.floor(rnd() * 4), seed: rnd(), lit: 0.2, color: [0xb8b2a8, 0x9aa3a8, 0xc9c3b8][Math.floor(rnd() * 3)] });
+      const h = 20 + rnd() * 70 + 160 * dt * rnd();
+      const k = rnd();
+      const kind = h < 45 ? 'box' : k < 0.25 ? 'taper' : k < 0.45 ? 'round' : k < 0.6 ? 'twist' : k < 0.72 ? 'stepped' : 'box';
+      const w = 20 + rnd() * 40;
+      const d = kind === 'round' || kind === 'twist' ? w : 20 + rnd() * 40;
+      far.push({ x, z, w, d, h, y: 0, style: Math.floor(rnd() * 3) === 1 ? 0 : Math.floor(rnd() * 4), seed: rnd(), lit: 0.2, color: [0xb8b2a8, 0x9aa3a8, 0xc9c3b8][Math.floor(rnd() * 3)], kind, garden: 0 });
     }
-    const m = towerMesh(far, towers.material);
-    m.castShadow = false;
-    m.receiveShadow = false;
-    m.name = 'towers-far';
-    group.add(m);
-    farTowers = m;
+    farTowers = towerMeshes(far, towerMat, forms, 'towers-far');
+    for (const m of farTowers) {
+      m.castShadow = false;
+      m.receiveShadow = false;
+      group.add(m);
+    }
   }
 
   // ---- civic plaza: paving, lawns, planters, the reflecting pool
@@ -847,7 +1050,7 @@ export function buildCity({ renderer, tier, library }) {
   // the pool mirrors the library, the plaza, the near towers and the sky; the
   // thousands of small things (trees, roof plant, far skyline, life) are left
   // out of that second pass, and it is redrawn every other frame
-  const reflectHide = [water, ...treeSets, roofPlant, farTowers];
+  const reflectHide = [water, ...treeSets, roofPlant, ...farTowers];
   let frameNo = 0;
   return {
     group,
