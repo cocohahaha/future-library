@@ -1,52 +1,38 @@
-import * as THREE from 'three';
+import { Vector3 } from 'three';
+
+// World units are millimetres: the desk top is y = 0, the book is about the
+// size of a real art book (196 × 256 mm pages) and the miniatures on its
+// plates are at 1:40 (a 1.7 m person stands 42.5 mm tall).
 
 // ---------------------------------------------------------------- palette
-// "Ink & paper courtyard at sunset": mineral pigments on xuan paper.
-// All values are sRGB hex; THREE.Color converts them to linear on .set().
+// sRGB hex; THREE.Color converts to linear on .set()
 export const PAL = {
-  paper: 0xf1e8d8,
-  plaster: 0xeee6d6, // whitewash (粉墙)
-  plasterShade: 0xd9cfbd,
-  stone: 0xc9bea9, // limestone
-  stoneDark: 0x9d9384,
-  stoneGrey: 0xa9a49a, // bluestone (青石)
-  brick: 0x8d8a85, // grey brick (青砖)
-  tile: 0x5b5a58, // grey roof tile (黛瓦)
-  tileDark: 0x3d3c3b,
-  ink: 0x24201d,
-  cedar: 0x8a5a3b,
-  wood: 0x6e4a33,
-  woodDark: 0x4a3122,
-  woodPale: 0xa47a55,
-  lacquer: 0x84321f, // red-brown lacquered columns
-  lacquerDark: 0x5c2216,
-  cinnabar: 0xb0432c,
-  ochre: 0xc08a3e,
-  ginkgo: 0xe0b03c,
-  maple: 0xb8432a,
-  celadon: 0x7fa596,
-  azurite: 0x3e5c76,
-  malachite: 0x3f6f5e,
-  bamboo: 0x6f8f4a,
-  pine: 0x3d5a3c,
-  grass: 0x8c8f55,
-  grassDry: 0xb3a26a,
-  earth: 0x8b7458,
-  water: 0x2b3f3f,
-  gold: 0xc9a24c,
-  lamp: 0xffb768,
-  sun: 0xffc48a
+  bg: 0xb4aa9a, // the far desk dissolves into this
+  oak: 0xcfb796,
+  lino: 0x5f6f78, // slate-blue linoleum desk pad
+  linoEdge: 0x4b5358,
+  cloth: 0xa4502f, // terracotta bookcloth
+  clothSheen: 0xf0b08a,
+  foil: 0xd9b46a, // warm gold foil
+  paper: 0xf6f0e3,
+  paperEdge: 0xeee5d2,
+  ink: 0x24211e,
+  inkSoft: 0x5b554d,
+  ribbon: 0x2d3a52
 };
 
-// low sun in the west-south-west: warm raking light on south façades,
-// long shadows reaching north-east across the courtyards
-const SUN_AZ = THREE.MathUtils.degToRad(246); // compass bearing, 0 = north (-Z), 90 = east (+X)
-const SUN_EL = THREE.MathUtils.degToRad(13.5);
-export const SUN_DIR = new THREE.Vector3(
-  Math.sin(SUN_AZ) * Math.cos(SUN_EL),
-  Math.sin(SUN_EL),
-  -Math.cos(SUN_AZ) * Math.cos(SUN_EL)
-).normalize();
+// one accent per zone, used for printed numerals, rules and small details
+export const ZONE_COLORS = {
+  well: '#2f6f73',
+  provenance: '#b0452f',
+  dialogue: '#b9822a',
+  quiet: '#66784a',
+  verify: '#36507f'
+};
+
+// The window is on the reader's left, a little in front of the desk, so the
+// key light rakes across the pages and the miniatures' back walls are lit.
+export const WINDOW_DIR = new Vector3(-0.6, 0.7, 0.26).normalize();
 
 // ---------------------------------------------------------------- device tier
 export function detectTier() {
@@ -70,49 +56,37 @@ export const TIERS = {
   low: {
     name: 'low',
     maxDpr: 1.5,
-    megapixels: 1.6, // render-pixel budget (pixel ratio is capped to fit it)
-    minScale: 0.6, // adaptive governor floor (fraction of the starting pixel ratio)
-    msaa: 2,
-    shadow: [2048, 1024],
-    shadowSoft: false,
+    megapixels: 1.7, // render-pixel budget (the pixel ratio is capped to fit it)
+    minScale: 0.6, // floor for the adaptive governor
+    msaa: 4,
+    shadow: 1024,
+    shadowRadius: 2,
+    ao: false,
     bloomStart: 4, // first bloom level = 1/4 resolution
     bloomLevels: 3,
-    detail: false, // per-pixel procedural material detail
-    reflections: false,
-    terrainSeg: 150,
-    grass: 0.4,
-    trees: 0.55,
-    books: 0.5,
-    people: 0.65,
-    particles: 0.5,
-    rafters: false,
-    eaveTiles: false,
-    curve: 8 // radial segments for round things
+    pagePx: 3.6, // px/mm for the pages of the open spread
+    pagePxFar: 1.2, // px/mm for every other page
+    texScale: 0.5, // procedural texture resolution
+    figureDetail: 0.7,
+    books: 0.6,
+    env: 128
   },
   high: {
     name: 'high',
     maxDpr: 2,
     megapixels: 4.2,
-    minScale: 0.7,
+    minScale: 0.65,
     msaa: 4,
-    shadow: [4096, 2048],
-    shadowSoft: true,
+    shadow: 2048,
+    shadowRadius: 3,
+    ao: true,
     bloomStart: 2,
     bloomLevels: 5,
-    detail: true,
-    reflections: true,
-    terrainSeg: 240,
-    grass: 1,
-    trees: 1,
+    pagePx: 6,
+    pagePxFar: 1.6,
+    texScale: 1,
+    figureDetail: 1,
     books: 1,
-    people: 1,
-    particles: 1,
-    rafters: true,
-    eaveTiles: true,
-    curve: 14
+    env: 256
   }
 };
-
-// Layers: everything renders on layer 0; things that should also appear in
-// the pond's planar reflection opt into REFLECT.
-export const LAYER_REFLECT = 1;

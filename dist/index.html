@@ -2,60 +2,24 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-    <meta name="theme-color" content="#ecd9bd" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#b4aa9a" />
     <meta name="color-scheme" content="light" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="开放问题图书馆" />
-    <meta name="description" content="开放问题图书馆：一座 AI 时代之后的公共图书馆，以交互式程序化 3D 场景呈现。" />
+    <meta name="description" content="开放问题图书馆：一本摊在书桌上的书。翻开每一页，一座 AI 之后的公共图书馆便从纸上立起。" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>开放问题图书馆</title>
-    <script type="module" crossorigin src="./assets/index-CiCW9EfJ.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DdwKPjZ2.css">
+    <script type="module" crossorigin src="./assets/index-64c4lsSV.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three-core-DGRE-Brg.js">
+    <link rel="modulepreload" crossorigin href="./assets/three-render-EEReV2tl.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-BJlBjvyV.css">
   </head>
   <body>
-    <canvas id="scene" data-i18n-aria="canvas" aria-label="可交互的 3D 图书馆庭院"></canvas>
-
-    <div class="hud" id="hud">
-      <header class="title">
-        <p class="eyebrow" data-i18n="eyebrow">AI 之后的公共图书馆</p>
-        <h1 data-i18n-html="titleHtml"><em>开放问题</em>图书馆</h1>
-        <p class="hint">
-          <span class="hint-touch" data-i18n="hintTouch">单指拖动环视 · 双指缩放 · 轻点一处区域</span>
-          <span class="hint-mouse" data-i18n="hintMouse">拖动环视 · 滚轮缩放 · 点击一处区域</span>
-        </p>
-      </header>
-
-      <div class="lang" role="group" data-i18n-aria="langToggle" aria-label="切换语言">
-        <button class="lang-btn is-active" data-lang="zh" lang="zh-CN" aria-pressed="true">中文</button>
-        <button class="lang-btn" data-lang="en" lang="en" aria-pressed="false">EN</button>
-      </div>
-
-      <div class="labels" id="labels" aria-hidden="true"></div>
-
-      <aside class="panel" id="panel" aria-live="polite" hidden>
-        <button class="panel-close" id="panel-close" data-i18n-aria="close" aria-label="关闭">×</button>
-        <p class="panel-kicker" id="panel-kicker"></p>
-        <h2 class="panel-title" id="panel-title"></h2>
-        <p class="panel-body" id="panel-body"></p>
-        <dl class="panel-compare">
-          <div><dt data-i18n="before">AI 之前</dt><dd id="panel-before"></dd></div>
-          <div><dt data-i18n="now">如今</dt><dd id="panel-after"></dd></div>
-        </dl>
-        <div class="panel-actions">
-          <button class="btn btn-primary" id="panel-activate"></button>
-          <button class="btn" id="panel-overview" data-i18n="overview">回到全景</button>
-        </div>
-      </aside>
-
-      <nav class="zonebar" id="zonebar" data-i18n-aria="zonebar" aria-label="图书馆分区"></nav>
-    </div>
-
+    <canvas id="scene" tabindex="0" data-i18n-aria="canvas" aria-label="一本摊开在书桌上的立体书"></canvas>
     <div class="loader" id="loader">
-      <span class="loader-enso" aria-hidden="true"></span>
-      <span class="loader-text" data-i18n="loader">研墨中……</span>
+      <span class="loader-text" data-i18n="loader">装订中……</span>
       <span class="loader-bar" aria-hidden="true"><span id="loader-progress"></span></span>
     </div>
     <noscript>此体验需要 JavaScript 与 WebGL。This experience needs JavaScript and WebGL.</noscript>
